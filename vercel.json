@@ -1,0 +1,15 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm ci",
+  "regions": ["sin1"],
+  "functions": {
+    "src/app/api/report/generate/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/ai/**": {
+      "maxDuration": 30
+    }
+  }
+}

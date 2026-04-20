@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply text-slate-900 bg-slate-50; }
+  a { @apply text-inherit; }
+}
+
+@layer utilities {
+  .prose-report p { @apply mb-3 leading-relaxed; }
+  .prose-report h3 { @apply font-semibold text-slate-900 mb-2 mt-5; }
+}
