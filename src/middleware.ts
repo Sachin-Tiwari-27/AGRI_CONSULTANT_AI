@@ -28,8 +28,9 @@ export async function middleware(request: NextRequest) {
   // Protect dashboard and project routes
   const protectedPaths = ['/dashboard', '/project']
   const isProtected = protectedPaths.some(p => pathname.startsWith(p))
+  const isReportPage = pathname.endsWith('/report')
 
-  if (isProtected && !user) {
+  if (isProtected && !isReportPage && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirect', pathname)
