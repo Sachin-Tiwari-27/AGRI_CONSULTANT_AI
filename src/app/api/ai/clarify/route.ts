@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { callAIJSON, logAIUsage } from '@/lib/ai/ai.service'
 import type { AIFlag } from '@/types'
 
+type ClarificationFlag = Omit<AIFlag, 'id' | 'status'>
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
     maxTokens: 1500,
   }
 
-  const aiResponse = await callAIJSON<AIFlag[]>(request)
+  const aiResponse = await callAIJSON<ClarificationFlag[]>(request)
   await logAIUsage(
     { content: '', tokensUsed: 0, model: '', provider: 'openrouter', durationMs: 0 },
     'clarification_check', projectId, user.id
@@ -46,8 +48,15 @@ export async function POST(req: NextRequest) {
       severity: f.severity,
       status: 'pending',
     }))
-    await supabase.from('ai_flags').insert(flags)
+    const { data: insertedFlags, error } = await supabase
+      .from('ai_flags')
+      .insert(flags)
+      .select('*')
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ flags: insertedFlags })
   }
 
-  return NextResponse.json({ flags: aiResponse })
+  return NextResponse.json({ flags: [] })
 }
