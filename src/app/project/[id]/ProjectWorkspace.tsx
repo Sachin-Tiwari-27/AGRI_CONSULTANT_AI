@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Activity,
   CloudRain,
+  Trash2,
 } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import type { Project, Report, AIFlag, ReportSectionKey } from "@/types";
@@ -217,15 +218,61 @@ export function ProjectWorkspace({
   }
 
   async function acceptFlag(flagId: string) {
-    setFlags((f) =>
-      f.map((x) => (x.id === flagId ? { ...x, status: "accepted" } : x)),
-    );
+    setLoading(`flag_accept_${flagId}`);
+    try {
+      const res = await fetch(`/api/ai/flags/${flagId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to accept flag");
+
+      setFlags((f) => f.map((x) => (x.id === flagId ? data.flag : x)));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      alert(`Failed to accept flag: ${message}`);
+    } finally {
+      setLoading(null);
+    }
   }
 
   async function dismissFlag(flagId: string) {
-    setFlags((f) =>
-      f.map((x) => (x.id === flagId ? { ...x, status: "dismissed" } : x)),
-    );
+    setLoading(`flag_dismiss_${flagId}`);
+    try {
+      const res = await fetch(`/api/ai/flags/${flagId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "dismissed" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to dismiss flag");
+
+      setFlags((f) => f.map((x) => (x.id === flagId ? data.flag : x)));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      alert(`Failed to dismiss flag: ${message}`);
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function deleteFlag(flagId: string) {
+    setLoading(`flag_delete_${flagId}`);
+    try {
+      const res = await fetch(`/api/ai/flags/${flagId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete flag");
+
+      setFlags((f) => f.filter((x) => x.id !== flagId));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      alert(`Failed to delete flag: ${message}`);
+    } finally {
+      setLoading(null);
+    }
   }
 
   async function fetchAnalysisData() {
@@ -783,6 +830,7 @@ export function ProjectWorkspace({
                                   size="sm"
                                   variant="secondary"
                                   onClick={() => acceptFlag(flag.id)}
+                                  loading={loading === `flag_accept_${flag.id}`}
                                 >
                                   Accept
                                 </Button>
@@ -790,8 +838,31 @@ export function ProjectWorkspace({
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => dismissFlag(flag.id)}
+                                  loading={loading === `flag_dismiss_${flag.id}`}
                                 >
                                   Dismiss
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => deleteFlag(flag.id)}
+                                  loading={loading === `flag_delete_${flag.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Delete
+                                </Button>
+                              </div>
+                            )}
+                            {flag.status !== "pending" && (
+                              <div className="flex gap-2 flex-shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => deleteFlag(flag.id)}
+                                  loading={loading === `flag_delete_${flag.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Delete
                                 </Button>
                               </div>
                             )}
