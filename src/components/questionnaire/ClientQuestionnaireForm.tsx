@@ -1,9 +1,10 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Input, Textarea, Field, Select } from '@/components/ui/FormFields'
+import { Input, Textarea, Select } from '@/components/ui/FormFields'
 import { CheckCircle, Upload, Leaf } from 'lucide-react'
 import type { QuestionnaireTemplate, QuestionnaireSubmission, Question } from '@/types'
+import { AsyncFeedback } from '@/components/ui/AsyncFeedback'
 
 interface Props {
   submission: QuestionnaireSubmission
@@ -12,9 +13,11 @@ interface Props {
 
 export function ClientQuestionnaireForm({ submission, template }: Props) {
   const [answers, setAnswers] = useState<Record<string, unknown>>(submission.answers || {})
-  const [submitting, setSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [currentSection, setCurrentSection] = useState(0)
+  const feedbackRef = useRef<HTMLDivElement>(null)
 
   const sections = template.sections.sort((a, b) => a.order - b.order)
   const section = sections[currentSection]
@@ -39,7 +42,8 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
   }
 
   async function submitAnswers() {
-    setSubmitting(true)
+    setSubmitStatus('loading')
+    setSubmitMessage(null)
     try {
       const res = await fetch(`/api/questionnaire/${submission.token}`, {
         method: 'POST',
@@ -47,11 +51,13 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
         body: JSON.stringify({ answers }),
       })
       if (!res.ok) throw new Error('Submission failed')
+      setSubmitStatus('success')
+      setSubmitMessage('Answers submitted successfully. Thank you for completing the questionnaire.')
       setSubmitted(true)
     } catch {
-      alert('Submission failed. Please try again.')
-    } finally {
-      setSubmitting(false)
+      setSubmitStatus('error')
+      setSubmitMessage('Submission failed. Please review your answers and try again.')
+      setTimeout(() => feedbackRef.current?.focus(), 0)
     }
   }
 
@@ -103,6 +109,16 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
             <p className="text-sm text-slate-600 mt-1">{section.description}</p>
           )}
         </div>
+        <div aria-live="polite" className="sr-only">{submitMessage || ''}</div>
+        {submitMessage && !submitted && (
+          <div
+            ref={feedbackRef}
+            tabIndex={-1}
+            className="mb-4 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 rounded-lg"
+          >
+            <AsyncFeedback message={submitMessage} tone={submitStatus === 'error' ? 'error' : 'success'} />
+          </div>
+        )}
 
         {/* Questions */}
         <div className="space-y-5">
@@ -137,7 +153,8 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
           ) : (
             <Button
               onClick={submitAnswers}
-              loading={submitting}
+              loading={submitStatus === 'loading'}
+              disabled={submitStatus === 'loading'}
               className="flex-1"
             >
               Submit answers
@@ -288,7 +305,7 @@ function QuestionField({
         <Select
           {...{
             value: (value as string) || 'OMR',
-            onChange: (e: any) => onChange(e.target.value),
+            onChange: (e: { target: { value: string } }) => onChange(e.target.value),
             options: [
               { value: 'OMR', label: 'OMR - Omani Rial' },
               { value: 'USD', label: 'USD - US Dollar' },

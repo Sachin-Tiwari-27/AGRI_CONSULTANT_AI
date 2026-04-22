@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardFooter } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Card";
 import { ReportEditor } from "@/components/report/ReportEditor";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { AsyncFeedback } from "@/components/ui/AsyncFeedback";
 import {
   Video,
   Send,
@@ -102,12 +103,29 @@ export function ProjectWorkspace({
     "overview" | "questionnaire" | "analysis" | "report"
   >("overview");
   const [loading, setLoading] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<
+    Record<
+      | "sendQuestionnaire"
+      | "clarificationCheck"
+      | "followUpSend"
+      | "reportGeneration"
+      | "analysisFetch",
+      { state: "idle" | "loading" | "success" | "error"; message: string | null }
+    >
+  >({
+    sendQuestionnaire: { state: "idle", message: null },
+    clarificationCheck: { state: "idle", message: null },
+    followUpSend: { state: "idle", message: null },
+    reportGeneration: { state: "idle", message: null },
+    analysisFetch: { state: "idle", message: null },
+  });
   const [flags, setFlags] = useState<AIFlag[]>(initial.ai_flags || []);
   const [expandedAnswers, setExpandedAnswers] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<{
     climateData: string;
     marketResearch: string;
   } | null>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
 
   const submissions = project.questionnaire_submissions || [];
   const latestSubmission = submissions
@@ -119,9 +137,90 @@ export function ProjectWorkspace({
     )[0];
   const pendingFlags = flags.filter((f) => f.status === "pending");
   const acceptedFlags = flags.filter((f) => f.status === "accepted");
+  const latestAsyncMessage =
+    Object.values(actionStatus)
+      .map((item) => item.message)
+      .filter(Boolean)
+      .at(-1) || "";
+
+  function updateActionStatus(
+    action: keyof typeof actionStatus,
+    state: "idle" | "loading" | "success" | "error",
+    message: string | null = null,
+  ) {
+    setActionStatus((prev) => ({
+      ...prev,
+      [action]: { state, message },
+    }));
+    if ((state === "success" || state === "error") && message) {
+      setTimeout(() => feedbackRef.current?.focus(), 0);
+    }
+  }
+
+  const recommendedAction = (() => {
+    if (!submissions.length) {
+      return {
+        title: "Send the initial questionnaire",
+        description:
+          "Kick off data collection so the client can provide baseline farm details.",
+        buttonLabel: "Send questionnaire",
+        action: sendQuestionnaire,
+        disabled: actionStatus.sendQuestionnaire.state === "loading",
+      };
+    }
+    if (!latestSubmission) {
+      return {
+        title: "Wait for questionnaire submission",
+        description:
+          "The form link has been sent. Follow up with the client if no response arrives soon.",
+        buttonLabel: "Review questionnaire tab",
+        action: () => setActiveTab("questionnaire"),
+        disabled: false,
+      };
+    }
+    if (!flags.length || pendingFlags.length > 0) {
+      return {
+        title: "Run AI clarification check",
+        description:
+          "Detect missing critical inputs before analysis and report drafting.",
+        buttonLabel: "Run check",
+        action: runClarificationCheck,
+        disabled: actionStatus.clarificationCheck.state === "loading",
+      };
+    }
+    if (acceptedFlags.length > 0) {
+      return {
+        title: "Send follow-up clarification",
+        description:
+          "Request only the accepted clarification questions from the client.",
+        buttonLabel: "Send follow-up",
+        action: sendFollowUp,
+        disabled: actionStatus.followUpSend.state === "loading",
+      };
+    }
+    if (!report) {
+      return {
+        title: "Generate feasibility report draft",
+        description:
+          "Generate the AI draft now that questionnaire and clarifications are complete.",
+        buttonLabel: "Generate report",
+        action: () => generateReport(),
+        disabled: actionStatus.reportGeneration.state === "loading",
+      };
+    }
+    return {
+      title: "Review and refine draft report",
+      description:
+        "Open the report tab to finalize narrative, numbers, and recommendations.",
+      buttonLabel: "Open report",
+      action: () => setActiveTab("report"),
+      disabled: false,
+    };
+  })();
 
   async function sendQuestionnaire() {
     setLoading("send_q");
+    updateActionStatus("sendQuestionnaire", "loading");
     try {
       const res = await fetch("/api/questionnaire/send", {
         method: "POST",
@@ -135,9 +234,17 @@ export function ProjectWorkspace({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       setProject((p) => ({ ...p, status: "questionnaire_sent" }));
-      alert("Questionnaire sent to " + project.client_email);
-    } catch (e: any) {
-      alert("Failed to send questionnaire: " + e.message);
+      updateActionStatus(
+        "sendQuestionnaire",
+        "success",
+        `Questionnaire sent to ${project.client_email}.`,
+      );
+    } catch {
+      updateActionStatus(
+        "sendQuestionnaire",
+        "error",
+        "Failed to send questionnaire. Please try again.",
+      );
     } finally {
       setLoading(null);
     }
@@ -146,6 +253,7 @@ export function ProjectWorkspace({
   async function runClarificationCheck() {
     if (!latestSubmission) return;
     setLoading("clarify");
+    updateActionStatus("clarificationCheck", "loading");
     try {
       const res = await fetch("/api/ai/clarify", {
         method: "POST",
@@ -158,8 +266,17 @@ export function ProjectWorkspace({
       const data = await res.json();
       setFlags(data.flags || []);
       setActiveTab("questionnaire");
+      updateActionStatus(
+        "clarificationCheck",
+        "success",
+        `Clarification check completed. ${data.flags?.length || 0} potential gaps found.`,
+      );
     } catch {
-      alert("Clarification check failed");
+      updateActionStatus(
+        "clarificationCheck",
+        "error",
+        "Clarification check failed. Please retry in a moment.",
+      );
     } finally {
       setLoading(null);
     }
@@ -168,6 +285,7 @@ export function ProjectWorkspace({
   async function sendFollowUp() {
     if (!acceptedFlags.length) return;
     setLoading("followup");
+    updateActionStatus("followUpSend", "loading");
     try {
       const res = await fetch("/api/questionnaire/followup", {
         method: "POST",
@@ -176,11 +294,17 @@ export function ProjectWorkspace({
       });
       if (!res.ok) throw new Error("Failed");
       setProject((p) => ({ ...p, status: "clarification_sent" }));
-      alert(
-        `Follow-up questionnaire sent to ${project.client_email} with ${acceptedFlags.length} question(s).`,
+      updateActionStatus(
+        "followUpSend",
+        "success",
+        `Follow-up sent to ${project.client_email} with ${acceptedFlags.length} question(s).`,
       );
     } catch {
-      alert("Failed to send follow-up");
+      updateActionStatus(
+        "followUpSend",
+        "error",
+        "Failed to send follow-up. Please retry.",
+      );
     } finally {
       setLoading(null);
     }
@@ -189,6 +313,9 @@ export function ProjectWorkspace({
   async function generateReport(specificSection?: ReportSectionKey) {
     const loadingKey = specificSection ? `report_${specificSection}` : "report";
     setLoading(loadingKey);
+    if (!specificSection) {
+      updateActionStatus("reportGeneration", "loading");
+    }
     try {
       const res = await fetch("/api/report/generate", {
         method: "POST",
@@ -209,8 +336,23 @@ export function ProjectWorkspace({
       if (updated.reports?.[0]) setReport(updated.reports[0]);
       setProject((p) => ({ ...p, status: "report_draft" }));
       setActiveTab("report");
-    } catch (err: any) {
-      alert(`Report generation failed: ${err.message}`);
+      if (!specificSection) {
+        updateActionStatus(
+          "reportGeneration",
+          "success",
+          "Report generation completed. Review the draft sections.",
+        );
+      }
+    } catch (err: unknown) {
+      if (!specificSection) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        updateActionStatus(
+          "reportGeneration",
+          "error",
+          `Report generation failed: ${errorMessage}`,
+        );
+      }
     } finally {
       setLoading(null);
     }
@@ -230,15 +372,42 @@ export function ProjectWorkspace({
 
   async function fetchAnalysisData() {
     setLoading("analysisData");
+    updateActionStatus("analysisFetch", "loading");
     try {
       const res = await fetch(`/api/analysis/data/${project.id}`);
       if (!res.ok) throw new Error("Fetch failed");
       setAnalysisData(await res.json());
+      updateActionStatus(
+        "analysisFetch",
+        "success",
+        "Latest market and climate data fetched successfully.",
+      );
     } catch {
-      alert("Failed to fetch data");
+      updateActionStatus(
+        "analysisFetch",
+        "error",
+        "Failed to fetch analysis data. Please retry.",
+      );
     } finally {
       setLoading(null);
     }
+  }
+
+  function renderActionFeedback(
+    action: keyof typeof actionStatus,
+    className = "mt-2",
+  ) {
+    const status = actionStatus[action];
+    if (!status.message || status.state === "loading" || status.state === "idle") {
+      return null;
+    }
+    return (
+      <AsyncFeedback
+        className={className}
+        message={status.message}
+        tone={status.state === "error" ? "error" : "success"}
+      />
+    );
   }
 
   const TABS: {
@@ -280,6 +449,50 @@ export function ProjectWorkspace({
 
   return (
     <div className="px-8 py-6">
+      <div aria-live="polite" className="sr-only">
+        {latestAsyncMessage}
+      </div>
+      <div
+        ref={feedbackRef}
+        tabIndex={-1}
+        className="mb-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+      >
+        {Object.entries(actionStatus)
+          .filter(
+            ([, value]) =>
+              value.message && (value.state === "success" || value.state === "error"),
+          )
+          .slice(-1)
+          .map(([key, value]) => (
+            <AsyncFeedback
+              key={key}
+              message={value.message!}
+              tone={value.state === "error" ? "error" : "success"}
+            />
+          ))}
+      </div>
+      <Card className="mb-6 border-green-200 bg-green-50/60">
+        <CardBody className="flex items-center justify-between gap-4 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-green-700">
+              Next recommended action
+            </p>
+            <h3 className="text-sm font-semibold text-slate-900 mt-1">
+              {recommendedAction.title}
+            </h3>
+            <p className="text-xs text-slate-600 mt-1">
+              {recommendedAction.description}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={recommendedAction.action}
+            disabled={recommendedAction.disabled}
+          >
+            {recommendedAction.buttonLabel}
+          </Button>
+        </CardBody>
+      </Card>
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-slate-200 mb-6">
         {TABS.map((tab) => (
@@ -452,83 +665,94 @@ export function ProjectWorkspace({
                 )}
 
                 {/* Send questionnaire */}
-                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <Send className="w-4 h-4 text-slate-500" />
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">
-                        Send questionnaire
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {latestSubmission
-                          ? `Submitted ${formatDate(latestSubmission.submitted_at!)}`
-                          : submissions.length > 0
-                            ? "Sent — awaiting response"
-                            : "Not sent yet"}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={sendQuestionnaire}
-                    loading={loading === "send_q"}
-                    disabled={!!latestSubmission}
-                  >
-                    Send
-                  </Button>
-                </div>
-
-                {/* AI clarification */}
-                {latestSubmission && (
+                <div>
                   <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200">
                     <div className="flex items-center gap-3">
-                      <Zap className="w-4 h-4 text-purple-500" />
+                      <Send className="w-4 h-4 text-slate-500" />
                       <div>
                         <p className="text-sm font-medium text-slate-800">
-                          Run AI gap check
+                          Send questionnaire
                         </p>
                         <p className="text-xs text-slate-500">
-                          {flags.length > 0
-                            ? `${pendingFlags.length} gaps pending review`
-                            : "Check questionnaire for missing data"}
+                          {latestSubmission
+                            ? `Submitted ${formatDate(latestSubmission.submitted_at!)}`
+                            : submissions.length > 0
+                              ? "Sent — awaiting response"
+                              : "Not sent yet"}
                         </p>
                       </div>
                     </div>
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={runClarificationCheck}
-                      loading={loading === "clarify"}
+                      onClick={sendQuestionnaire}
+                      loading={loading === "send_q"}
+                      disabled={!!latestSubmission || loading === "send_q"}
                     >
-                      Run
+                      Send
                     </Button>
+                  </div>
+                  {renderActionFeedback("sendQuestionnaire")}
+                </div>
+
+                {/* AI clarification */}
+                {latestSubmission && (
+                  <div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <Zap className="w-4 h-4 text-purple-500" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">
+                            Run AI gap check
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {flags.length > 0
+                              ? `${pendingFlags.length} gaps pending review`
+                              : "Check questionnaire for missing data"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={runClarificationCheck}
+                        loading={loading === "clarify"}
+                        disabled={loading === "clarify"}
+                      >
+                        Run
+                      </Button>
+                    </div>
+                    {renderActionFeedback("clarificationCheck")}
                   </div>
                 )}
 
                 {/* Generate report */}
                 {latestSubmission && (
-                  <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-4 h-4 text-green-600" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">
-                          Generate feasibility report
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {report
-                            ? "Report exists — regenerate sections"
-                            : "AI-draft all sections from project data"}
-                        </p>
+                  <div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-4 h-4 text-green-600" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">
+                            Generate feasibility report
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {report
+                              ? "Report exists — regenerate sections"
+                              : "AI-draft all sections from project data"}
+                          </p>
+                        </div>
                       </div>
+                      <Button
+                        size="sm"
+                        onClick={generateReport}
+                        loading={loading === "report"}
+                        disabled={loading === "report"}
+                      >
+                        {report ? "Regenerate" : "Generate"}
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={generateReport}
-                      loading={loading === "report"}
-                    >
-                      {report ? "Regenerate" : "Generate"}
-                    </Button>
+                    {renderActionFeedback("reportGeneration")}
                   </div>
                 )}
               </CardBody>
@@ -601,6 +825,14 @@ export function ProjectWorkspace({
       {/* ── QUESTIONNAIRE TAB ─────────────────────────────────── */}
       {activeTab === "questionnaire" && (
         <div className="max-w-3xl space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Questionnaire Operations
+            </h2>
+            <p className="text-sm text-slate-500">
+              Track submissions, run clarification checks, and request follow-up details.
+            </p>
+          </div>
           {/* Quick Actions Header for Questionnaire */}
           <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-2">
             <div className="flex items-center gap-3">
@@ -619,6 +851,7 @@ export function ProjectWorkspace({
                 variant="outline"
                 onClick={sendQuestionnaire}
                 loading={loading === "send_q"}
+                disabled={loading === "send_q"}
               >
                 <Send className="w-3.5 h-3.5 mr-1" />
                 {submissions.length > 0 ? "Resend Link" : "Send Questionnaire"}
@@ -629,6 +862,7 @@ export function ProjectWorkspace({
                   variant="secondary"
                   onClick={runClarificationCheck}
                   loading={loading === "clarify"}
+                  disabled={loading === "clarify"}
                 >
                   <Zap className="w-3.5 h-3.5 mr-1" /> Run AI Gap Check
                 </Button>
@@ -640,15 +874,20 @@ export function ProjectWorkspace({
             <Card>
               <CardBody className="text-center py-12">
                 <p className="text-slate-500 text-sm">
-                  No questionnaire sent yet.
+                  No questionnaire activity yet.
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Send the initial form to start collecting project inputs.
                 </p>
                 <Button
                   className="mt-4"
                   onClick={sendQuestionnaire}
                   loading={loading === "send_q"}
+                  disabled={loading === "send_q"}
                 >
                   Send questionnaire
                 </Button>
+                {renderActionFeedback("sendQuestionnaire", "mt-3")}
               </CardBody>
             </Card>
           ) : (
@@ -774,7 +1013,7 @@ export function ProjectWorkspace({
                                 {flag.reason}
                               </p>
                               <p className="text-xs text-slate-500 mt-1 italic">
-                                Suggested: "{flag.suggested_question}"
+                                Suggested: &quot;{flag.suggested_question}&quot;
                               </p>
                             </div>
                             {flag.status === "pending" && (
@@ -818,6 +1057,7 @@ export function ProjectWorkspace({
                         size="sm"
                         onClick={sendFollowUp}
                         loading={loading === "followup"}
+                        disabled={loading === "followup"}
                         className="flex-shrink-0"
                       >
                         <Send className="w-3.5 h-3.5" /> Send Follow-up
@@ -826,6 +1066,8 @@ export function ProjectWorkspace({
                   )}
                 </div>
               )}
+              {renderActionFeedback("clarificationCheck")}
+              {renderActionFeedback("followUpSend")}
             </>
           )}
         </div>
@@ -834,11 +1076,20 @@ export function ProjectWorkspace({
       {/* ── ANALYSIS TAB ──────────────────────────────────────── */}
       {activeTab === "analysis" && (
         <div className="space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Analysis Workspace</h2>
+            <p className="text-sm text-slate-500">
+              Review financial insights, live context data, and AI-generated feasibility outputs.
+            </p>
+          </div>
           {!latestSubmission ? (
             <Card>
               <CardBody className="text-center py-12">
                 <p className="text-slate-500 text-sm">
-                  Questionnaire must be submitted before analysis.
+                  Analysis becomes available after questionnaire submission.
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ask the client to submit the form, then return here.
                 </p>
               </CardBody>
             </Card>
@@ -917,7 +1168,7 @@ export function ProjectWorkspace({
                             tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
                           />
                           <Tooltip
-                            formatter={(v: any) => formatCurrency(v as number)}
+                            formatter={(v: number) => formatCurrency(v)}
                           />
                           <Bar
                             dataKey="revenue"
@@ -956,7 +1207,7 @@ export function ProjectWorkspace({
                             ))}
                           </Pie>
                           <Tooltip
-                            formatter={(v: any) => formatCurrency(v as number)}
+                            formatter={(v: number) => formatCurrency(v)}
                           />
                           <Legend />
                         </PieChart>
@@ -1015,6 +1266,7 @@ export function ProjectWorkspace({
                           variant="outline"
                           onClick={fetchAnalysisData}
                           loading={loading === "analysisData"}
+                          disabled={loading === "analysisData"}
                         >
                           Fetch Market & Climate Data
                         </Button>
@@ -1078,6 +1330,7 @@ export function ProjectWorkspace({
                   <Button
                     onClick={generateReport}
                     loading={loading === "report"}
+                    disabled={loading === "report"}
                   >
                     <Zap className="w-4 h-4" /> Run analysis & generate report
                   </Button>
@@ -1101,6 +1354,7 @@ export function ProjectWorkspace({
                       variant="outline"
                       onClick={fetchAnalysisData}
                       loading={loading === "analysisData"}
+                      disabled={loading === "analysisData"}
                     >
                       Fetch Market & Climate Data
                     </Button>
@@ -1147,12 +1401,19 @@ export function ProjectWorkspace({
               </Card>
             </>
           )}
+          {renderActionFeedback("analysisFetch")}
         </div>
       )}
 
       {/* ── REPORT TAB ────────────────────────────────────────── */}
       {activeTab === "report" && (
         <div className="max-w-3xl space-y-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Report Builder</h2>
+            <p className="text-sm text-slate-500">
+              Generate and refine sections into a client-ready feasibility report.
+            </p>
+          </div>
           {!report ? (
             <div className="space-y-6">
               {/* Report Preparation Header */}
@@ -1162,7 +1423,7 @@ export function ProjectWorkspace({
                   <p className="text-green-50/80 text-sm mt-1">
                     {latestSubmission 
                       ? "Questionnaire data received. AI draft is ready to be generated."
-                      : "Awaiting questionnaire submission to generate report."
+                      : "Awaiting questionnaire submission before report generation."
                     }
                   </p>
                 </div>
@@ -1172,6 +1433,7 @@ export function ProjectWorkspace({
                     className="bg-white text-green-700 hover:bg-green-50 border-none shadow-sm"
                     onClick={() => generateReport()}
                     loading={loading === "report"}
+                    disabled={loading === "report"}
                   >
                     <Zap className="w-4 h-4 mr-2" /> Generate Full Report
                   </Button>
@@ -1224,6 +1486,7 @@ export function ProjectWorkspace({
                     variant="outline" 
                     onClick={() => generateReport()}
                     loading={loading === "report"}
+                    disabled={loading === "report"}
                   >
                     <Zap className="w-3.5 h-3.5 mr-1" /> Regenerate All
                   </Button>
@@ -1236,6 +1499,7 @@ export function ProjectWorkspace({
               />
             </div>
           )}
+          {renderActionFeedback("reportGeneration")}
         </div>
       )}
     </div>
