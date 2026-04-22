@@ -126,6 +126,25 @@ export async function POST(req: NextRequest) {
     approved: false,
   }
 
+  // Store the fetched context data directly in the report for later consultant review
+  sections['context_market_data'] = {
+    key: 'context_market_data',
+    content: marketResearch,
+    title: 'Live Market Research Context',
+    ai_generated: true,
+    last_edited_at: new Date().toISOString(),
+    approved: false,
+  }
+
+  sections['context_climate_data'] = {
+    key: 'context_climate_data',
+    content: climateData,
+    title: 'Location Climate Context',
+    ai_generated: true,
+    last_edited_at: new Date().toISOString(),
+    approved: false,
+  }
+
   // ── Upsert report ──────────────────────────────────────────────────
   const { data: existingReport } = await supabase
     .from('reports').select('id, sections').eq('project_id', projectId).single()

@@ -197,7 +197,8 @@ export type ReportSectionKey =
   | 'benefits'
   | 'csr'
   | 'conclusion'
-
+  | 'context_market_data'
+  | 'context_climate_data'
 export interface ReportSection {
   key: ReportSectionKey
   title: string

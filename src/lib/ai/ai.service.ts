@@ -100,12 +100,25 @@ export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
     ...request,
     maxTokens: request.maxTokens || 2000,
   });
-  const cleaned = response.content
+
+  let cleaned = response.content
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  return JSON.parse(cleaned) as T;
+
+  // Robust extraction: find the first { and last } if JSON parsing fails initially
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (e) {
+    const startIdx = cleaned.indexOf("{");
+    const endIdx = cleaned.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
+      return JSON.parse(cleaned) as T;
+    }
+    throw e;
+  }
 }
 
 // ── Log AI usage to Supabase ──────────────────────────────────────────

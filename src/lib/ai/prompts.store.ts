@@ -157,7 +157,8 @@ Use these benchmark values (adjust for local market if context suggests otherwis
 - Skilled labour (farm manager/grower): OMR 500-700/month
 - Unskilled farm labour: OMR 150-200/month each
 
-Return a JSON financial model:
+Output must be ONLY a valid JSON object matching the exact structure below. Do not include any text before, during, or after the JSON.
+
 {
   "capex_total": 0,
   "pre_startup_cost": 0,
@@ -179,8 +180,6 @@ Return a JSON financial model:
   "payback_years": 0,
   "assumptions": ["list key assumptions made"]
 }
-
-Return only valid JSON.
 `,
 
   // ── Stage 4: market research (results injected from Tavily) ─────────
@@ -241,7 +240,8 @@ Market research:
 Climate and competitive advantage:
 {{technical_analysis}}
 
-Write a thorough market analysis section (400-600 words) covering: market size, import dependency, local supply gaps, competitive advantage of this location/approach, target customer segments, and export opportunities. Use specific numbers where available.
+Write a thorough market analysis section (400-600 words) covering: market size, import dependency, local supply gaps, competitive advantage of this location/approach, target customer segments, and export opportunities. 
+CRITICAL: You MUST use Markdown tables to display price benchmarks, supply/demand metrics, and target market segments. Do not just use raw text. Use specific numbers where available.
 `,
 
   report_business_model: `
@@ -253,7 +253,8 @@ Farm operations:
 
 Agro-tourism planned: {{agro_tourism}}
 
-Write the Business Model section (300-400 words) covering: farm operations overview, crop cultivation approach, operation facility, agro-tourism activities (if applicable), and revenue streams. Be specific about the proposed infrastructure.
+Write the Business Model section (300-400 words) covering: farm operations overview, crop cultivation approach, operation facility, agro-tourism activities (if applicable), and revenue streams. 
+CRITICAL: Include a Markdown table summarizing the primary and secondary revenue streams and their target audiences. Be specific about the proposed infrastructure.
 `,
 
   report_financial_projection: `
@@ -263,6 +264,7 @@ Financial model:
 {{financial_model_json}}
 
 Write a clear, detailed Financial Projection section (400-500 words) that explains: the capital investment breakdown, annual production projections by crop, revenue calculations, operating cost breakdown (growing cost + manpower), EBITDA analysis, and break-even/ROI timeline. Present the numbers clearly and explain the methodology.
+CRITICAL: You MUST use Markdown tables heavily in this section to display the CAPEX breakdown, the crop yields/revenues, and operating/manpower costs. Do not list numbers in plain text.
 `,
 
   report_risk_mitigation: `
@@ -273,7 +275,7 @@ Technical approach: {{project_type}}, {{crop_types}}
 
 Identify and address the main risks for this specific project type and location. For each risk provide a specific, actionable mitigation strategy. Cover: utility availability, crop production risks (disease, yield), market demand, competition, pricing volatility, and seasonal risks.
 
-Write in a table-compatible format: for each risk, write "Risk:" followed by the description, then "Mitigation:" followed by the strategy. Separate each pair with a blank line.
+CRITICAL: You MUST structure this section using a professional Markdown table with three columns: "Risk Category", "Description & Impact", and "Detailed Mitigation Strategy".
 Max 400 words.
 `,
 

@@ -129,18 +129,8 @@ export async function fetchClimateData(
     });
 
     const monthNames = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
 
     const avg = (arr: number[]) =>
@@ -150,10 +140,10 @@ export async function fetchClimateData(
 
     const rows = Array.from({ length: 12 }, (_, i) => {
       const m = monthly[i + 1];
-      return `${monthNames[i]}: max ${avg(m.maxTemps)}°C, min ${avg(m.minTemps)}°C, humidity ${avg(m.humidity)}%`;
+      return `| ${monthNames[i]} | ${avg(m.maxTemps)}°C | ${avg(m.minTemps)}°C | ${avg(m.humidity)}% |`;
     });
 
-    return rows.join("\n");
+    return `| Month | Avg Max Temp | Avg Min Temp | Avg Max Humidity |\n| :--- | :--- | :--- | :--- |\n${rows.join("\n")}`;
   } catch (err) {
     console.error("[Climate] Failed to fetch climate data:", err);
     return "Climate data unavailable — manual entry required.";

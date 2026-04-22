@@ -147,7 +147,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   async function fetchAnalysisData() {
     setLoading('analysisData')
     try {
-      const res = await fetch(`/api/projects/${project.id}/analysis-data`)
+      const res = await fetch(`/api/analysis/data/${project.id}`)
       if (!res.ok) throw new Error('Fetch failed')
       setAnalysisData(await res.json())
     } catch {
@@ -210,25 +210,36 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
               <CardHeader>
                 <h3 className="font-semibold text-slate-900 text-sm">Project pipeline</h3>
               </CardHeader>
-              <CardBody className="py-4">
-                <div className="flex items-center gap-2">
+              <CardBody className="py-6 px-4">
+                <div className="relative flex items-center justify-between w-full">
+                  {/* Background track line */}
+                  <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 h-1 bg-slate-100 rounded-full z-0" />
+                  
                   {[
-                    { key: 'call', label: '1. Call', done: ['call_completed','questionnaire_sent','questionnaire_submitted','analysis_running','report_draft','report_published','completed'].includes(project.status) },
-                    { key: 'q',    label: '2. Questionnaire', done: ['questionnaire_submitted','analysis_running','report_draft','report_published','completed'].includes(project.status) },
-                    { key: 'ai',   label: '3. Analysis', done: ['report_draft','report_published','completed'].includes(project.status) },
-                    { key: 'rep',  label: '4. Report', done: ['report_published','completed'].includes(project.status) },
-                    { key: 'pay',  label: '5. Delivered', done: project.status === 'completed' },
-                  ].map((step, i, arr) => (
-                    <div key={step.key} className="flex items-center gap-2 flex-1">
-                      <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${
-                        step.done ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {step.done && <CheckCircle className="w-3 h-3" />}
-                        {step.label}
+                    { key: 'call', label: 'Call', done: ['call_completed','questionnaire_sent','questionnaire_submitted','analysis_running','report_draft','report_published','completed'].includes(project.status) },
+                    { key: 'q',    label: 'Questionnaire', done: ['questionnaire_submitted','analysis_running','report_draft','report_published','completed'].includes(project.status) },
+                    { key: 'ai',   label: 'Analysis', done: ['report_draft','report_published','completed'].includes(project.status) },
+                    { key: 'rep',  label: 'Report', done: ['report_published','completed'].includes(project.status) },
+                    { key: 'pay',  label: 'Delivered', done: project.status === 'completed' },
+                  ].map((step, i, arr) => {
+                    const isLastDone = step.done && (!arr[i+1]?.done);
+                    return (
+                      <div key={step.key} className="relative z-10 flex flex-col items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm border-2 transition-all ${
+                          step.done 
+                            ? isLastDone ? 'bg-green-600 border-green-600 text-white shadow-md shadow-green-200' : 'bg-green-100 border-green-600 text-green-700' 
+                            : 'bg-white border-slate-300 text-slate-400'
+                        }`}>
+                          {step.done ? (isLastDone ? i+1 : <CheckCircle className="w-4 h-4 text-inherit" />) : i+1}
+                        </div>
+                        <span className={`text-[11px] uppercase tracking-wider font-semibold ${
+                          step.done ? (isLastDone ? 'text-green-700' : 'text-slate-700') : 'text-slate-400'
+                        }`}>
+                          {step.label}
+                        </span>
                       </div>
-                      {i < arr.length - 1 && <div className="flex-1 h-px bg-slate-200" />}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </CardBody>
             </Card>
@@ -548,7 +559,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                           <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
-                          <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                          <Tooltip formatter={(v: any) => formatCurrency(v as number)} />
                           <Bar dataKey="revenue" fill="#1A5C38" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -569,7 +580,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
                               <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                          <Tooltip formatter={(v: any) => formatCurrency(v as number)} />
                           <Legend />
                         </PieChart>
                       </ResponsiveContainer>
@@ -609,25 +620,31 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
                       <h3 className="font-semibold text-slate-900 text-sm">Live Context Data</h3>
                       <p className="text-xs text-slate-500 font-normal">Market prices and real historical climate data</p>
                     </div>
-                    {!analysisData && (
+                    {!analysisData && !report?.sections?.context_market_data && (
                       <Button size="sm" variant="outline" onClick={fetchAnalysisData} loading={loading === 'analysisData'}>
                         Fetch Market & Climate Data
                       </Button>
                     )}
                   </CardHeader>
-                  {analysisData && (
-                    <CardBody className="max-h-[500px] overflow-y-auto space-y-6 text-sm text-slate-700 bg-slate-50">
-                      <div>
-                        <h4 className="font-bold text-slate-900 mb-3 sticky top-0 bg-slate-50 py-2 border-b">Live Market Research</h4>
-                        <div className="bg-white p-4 rounded-xl border border-slate-200">
-                          <MarkdownRenderer content={analysisData.marketResearch} />
+                  {(analysisData || report?.sections?.context_market_data) && (
+                    <CardBody className="max-h-[600px] overflow-y-auto space-y-8 text-sm text-slate-700 bg-slate-50/50 p-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                          <Activity className="w-5 h-5 text-blue-600" />
+                          <h4 className="font-bold text-slate-900 text-lg">Live Market Research</h4>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                          <MarkdownRenderer content={analysisData?.marketResearch || report?.sections?.context_market_data?.content || ''} />
                         </div>
                       </div>
-                      <div className="pt-4">
-                        <h4 className="font-bold text-slate-900 mb-3 sticky top-0 bg-slate-50 py-2 border-b">Historical Climate Data (Monthly Avg 2020-2025)</h4>
-                        <pre className="whitespace-pre-wrap font-mono text-xs bg-white p-4 rounded-xl border border-slate-200 text-slate-800 leading-relaxed">
-                          {analysisData.climateData}
-                        </pre>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                          <CloudRain className="w-5 h-5 text-indigo-600" />
+                          <h4 className="font-bold text-slate-900 text-lg">Historical Climate Data (Monthly Avg 2020-2025)</h4>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto overflow-y-hidden">
+                          <MarkdownRenderer content={analysisData?.climateData || report?.sections?.context_climate_data?.content || ''} />
+                        </div>
                       </div>
                     </CardBody>
                   )}
@@ -658,25 +675,31 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
                   <h3 className="font-semibold text-slate-900 text-sm">Live Context Data</h3>
                   <p className="text-xs text-slate-500 font-normal mt-0.5">Explore market info and climate data without generating</p>
                 </div>
-                {!analysisData && (
+                {!analysisData && !report?.sections?.context_market_data && (
                   <Button size="sm" variant="outline" onClick={fetchAnalysisData} loading={loading === 'analysisData'}>
                     Fetch Market & Climate Data
                   </Button>
                 )}
               </CardHeader>
-              {analysisData && (
-                <CardBody className="max-h-[500px] overflow-y-auto space-y-6 text-sm text-slate-700">
-                  <div>
-                    <h4 className="font-bold text-slate-900 mb-3 sticky top-0 bg-slate-50 py-2 border-b">Market Research</h4>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <MarkdownRenderer content={analysisData.marketResearch} />
+              {(analysisData || report?.sections?.context_market_data) && (
+                <CardBody className="max-h-[600px] overflow-y-auto space-y-8 text-sm text-slate-700 bg-slate-50/50 p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                      <Activity className="w-5 h-5 text-blue-600" />
+                      <h4 className="font-bold text-slate-900 text-lg">Market Research</h4>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <MarkdownRenderer content={analysisData?.marketResearch || report?.sections?.context_market_data?.content || ''} />
                     </div>
                   </div>
-                  <div className="pt-4">
-                    <h4 className="font-bold text-slate-900 mb-3 sticky top-0 bg-slate-50 py-2 border-b">Historical Climate Data (Monthly Avg 2020-2025)</h4>
-                    <pre className="whitespace-pre-wrap font-mono text-xs bg-white p-4 rounded-xl border border-slate-200 text-slate-800 shadow-sm leading-relaxed">
-                      {analysisData.climateData}
-                    </pre>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                      <CloudRain className="w-5 h-5 text-indigo-600" />
+                      <h4 className="font-bold text-slate-900 text-lg">Historical Climate Data (Avg 2020-2025)</h4>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto overflow-y-hidden">
+                      <MarkdownRenderer content={analysisData?.climateData || report?.sections?.context_climate_data?.content || ''} />
+                    </div>
                   </div>
                 </CardBody>
               )}
