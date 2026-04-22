@@ -1,17 +1,18 @@
 'use client'
 import { useState } from 'react'
 import { Card, CardBody } from '@/components/ui/Card'
-import { CheckCircle, FileText, TrendingUp, ShieldCheck, BarChart3, Info, Lock, Unlock } from 'lucide-react'
+import { CheckCircle, FileText, TrendingUp, ShieldCheck, BarChart3, Info, Lock, Unlock, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer'
 import type { Report, ReportSectionKey } from '@/types'
+import type { LucideIcon } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 
-const SECTION_ICONS: Record<string, any> = {
+const SECTION_ICONS: Record<string, LucideIcon> = {
   executive_summary: CheckCircle,
   market_analysis: BarChart3,
   business_model: TrendingUp,
@@ -45,6 +46,7 @@ export function PublicReportView({
 }) {
   const [paid, setPaid] = useState(initialPaid)
   const [paying, setPaying] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const sectionKeys = Object.keys(SECTION_TITLES).filter(k => report.sections[k as ReportSectionKey])
 
   const cropChartData = report.financial_model?.crops?.map(c => ({
@@ -70,6 +72,20 @@ export function PublicReportView({
     } finally { setPaying(false) }
   }
 
+  async function downloadPdf() {
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/report/download?projectId=${projectId}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Download failed')
+      window.open(data.url, '_blank', 'noopener,noreferrer')
+    } catch {
+      alert('Unable to generate a secure download link right now.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-12 px-4 space-y-12">
       {/* Branding Header */}
@@ -92,6 +108,17 @@ export function PublicReportView({
                 ? <><Unlock className="w-5 h-5 text-green-300" /> Full Access</>
                 : <><Lock className="w-5 h-5 text-amber-300" /> Preview Only</>}
             </p>
+            {paid && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 border-white/40 text-white hover:bg-white/10"
+                onClick={downloadPdf}
+                loading={downloading}
+              >
+                <Download className="w-4 h-4" /> Download PDF
+              </Button>
+            )}
           </div>
         </div>
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl" />

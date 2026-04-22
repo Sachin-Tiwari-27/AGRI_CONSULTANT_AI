@@ -242,6 +242,7 @@ export interface Report {
   financial_model: FinancialModel
   status: 'draft' | 'review' | 'published'
   branding: ReportBranding
+  pdf_url?: string
   created_at: string
   updated_at: string
 }
