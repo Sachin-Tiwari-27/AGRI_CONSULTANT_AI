@@ -1,10 +1,18 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea, Select } from '@/components/ui/FormFields'
 import { CheckCircle, Upload, Leaf } from 'lucide-react'
 import type { QuestionnaireTemplate, QuestionnaireSubmission, Question } from '@/types'
-import { AsyncFeedback } from '@/components/ui/AsyncFeedback'
+type UploadedFileRef = {
+  question_id: string
+  filename: string
+  path: string
+  url?: string | null
+  size: number
+  mime_type: string
+}
 
 interface Props {
   submission: QuestionnaireSubmission
@@ -17,7 +25,17 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [currentSection, setCurrentSection] = useState(0)
-  const feedbackRef = useRef<HTMLDivElement>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileRef[]>(
+    (submission.uploaded_files || []).map(file => ({
+      question_id: file.question_id,
+      filename: file.filename,
+      path: file.url,
+      url: file.url,
+      size: file.size,
+      mime_type: file.mime_type,
+    }))
+  )
+  const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null)
 
   const sections = template.sections.sort((a, b) => a.order - b.order)
   const section = sections[currentSection]
@@ -48,7 +66,7 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
       const res = await fetch(`/api/questionnaire/${submission.token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers, uploaded_files: uploadedFiles }),
       })
       if (!res.ok) throw new Error('Submission failed')
       setSubmitStatus('success')
@@ -128,6 +146,21 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
               question={q}
               value={answers[q.id]}
               onChange={v => setAnswer(q.id, v)}
+              questionnaireToken={submission.token}
+              onFileUploaded={(file) => {
+                setUploadedFiles(prev => {
+                  const remaining = prev.filter(f => f.question_id !== file.question_id)
+                  return [...remaining, file]
+                })
+                setAnswer(q.id, {
+                  file_path: file.path,
+                  filename: file.filename,
+                  size: file.size,
+                  mime_type: file.mime_type,
+                })
+              }}
+              uploading={uploadingQuestionId === q.id}
+              setUploading={(uploading) => setUploadingQuestionId(uploading ? q.id : null)}
             />
           ))}
         </div>
@@ -168,12 +201,43 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
 
 // ── Individual question renderer ──────────────────────────────────────
 function QuestionField({
-  question, value, onChange
+  question,
+  value,
+  onChange,
+  questionnaireToken,
+  onFileUploaded,
+  uploading,
+  setUploading,
 }: {
   question: Question
   value: unknown
   onChange: (v: unknown) => void
+  questionnaireToken: string
+  onFileUploaded: (file: UploadedFileRef) => void
+  uploading: boolean
+  setUploading: (uploading: boolean) => void
 }) {
+  async function uploadFile(file: File) {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('question_id', question.id)
+      const res = await fetch(`/api/questionnaire/${questionnaireToken}/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      onFileUploaded(data.file as UploadedFileRef)
+    } catch {
+      alert('File upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
       <label className="block text-sm font-semibold text-slate-900 mb-1">
@@ -275,19 +339,20 @@ function QuestionField({
       {question.type === 'file_upload' && (
         <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-green-400 transition-colors">
           <Upload className="w-6 h-6 text-slate-400" />
-          <span className="text-sm text-slate-600">Click to upload file</span>
+          <span className="text-sm text-slate-600">{uploading ? 'Uploading...' : 'Click to upload file'}</span>
           <span className="text-xs text-slate-400">PDF, JPG, PNG up to 10MB</span>
           <input
             type="file"
             className="hidden"
-            onChange={e => {
+            disabled={uploading}
+            onChange={async e => {
               const file = e.target.files?.[0]
-              if (file) onChange({ name: file.name, size: file.size })
+              if (file) await uploadFile(file)
             }}
           />
-          {value && typeof value === 'object' && (value as { name?: string }).name ? (
+          {value && typeof value === 'object' && (value as { filename?: string }).filename ? (
             <span className="text-xs text-green-700 font-medium">
-              ✓ {String((value as { name: string }).name)}
+              ✓ {String((value as { filename: string }).filename)}
             </span>
           ) : null}
         </label>
@@ -305,7 +370,7 @@ function QuestionField({
         <Select
           {...{
             value: (value as string) || 'OMR',
-            onChange: (e: { target: { value: string } }) => onChange(e.target.value),
+            onChange: (e: ChangeEvent<HTMLSelectElement>) => onChange(e.target.value),
             options: [
               { value: 'OMR', label: 'OMR - Omani Rial' },
               { value: 'USD', label: 'USD - US Dollar' },

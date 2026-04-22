@@ -42,7 +42,7 @@ export async function POST(
 ) {
   const { token } = await params
   const supabase = await createServiceClient()
-  const { answers } = await req.json()
+  const { answers, uploaded_files } = await req.json()
 
   const { data: submission } = await supabase
     .from('questionnaire_submissions')
@@ -56,6 +56,7 @@ export async function POST(
   // Save answers + mark submitted
   await supabase.from('questionnaire_submissions').update({
     answers,
+    uploaded_files: Array.isArray(uploaded_files) ? uploaded_files : [],
     submitted_at: new Date().toISOString(),
   }).eq('token', token)
 
