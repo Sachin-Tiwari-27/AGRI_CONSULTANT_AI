@@ -220,6 +220,31 @@ create policy "Consultant sees own payments" on public.payments
 -- create policy "Authenticated users can upload" on storage.objects for insert with check (auth.role() = 'authenticated');
 -- create policy "Users access own uploads" on storage.objects for select using (auth.uid()::text = (storage.foldername(name))[1]);
 
+-- Recommended bucket + policy setup for questionnaire attachments and report PDFs
+insert into storage.buckets (id, name, public)
+values ('uploads', 'uploads', false)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('reports', 'reports', false)
+on conflict (id) do nothing;
+
+-- Questionnaire attachments (uploads bucket)
+drop policy if exists "Service role manages uploads" on storage.objects;
+create policy "Service role manages uploads"
+on storage.objects
+for all
+using (bucket_id = 'uploads' and auth.role() = 'service_role')
+with check (bucket_id = 'uploads' and auth.role() = 'service_role');
+
+-- Report PDFs (reports bucket)
+drop policy if exists "Service role manages reports bucket" on storage.objects;
+create policy "Service role manages reports bucket"
+on storage.objects
+for all
+using (bucket_id = 'reports' and auth.role() = 'service_role')
+with check (bucket_id = 'reports' and auth.role() = 'service_role');
+
 -- ── Schema Updates ───────────────────────────────────────────────────
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS payment_preference text CHECK (payment_preference IN ('always_upfront', 'project_basis'));
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS default_currency text;

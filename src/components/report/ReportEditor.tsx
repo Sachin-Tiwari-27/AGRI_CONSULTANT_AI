@@ -14,6 +14,7 @@ import {
   Sparkles,
   Lock,
   Send,
+  Download,
 } from "lucide-react";
 import type { Report, ReportSectionKey } from "@/types";
 
@@ -41,6 +42,7 @@ export function ReportEditor({ report, projectId, onUpdate }: Props) {
   const [editContent, setEditContent] = useState("");
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const supabase = createClient();
 
   const sectionKeys = Object.keys(SECTION_TITLES).filter(
@@ -110,7 +112,7 @@ export function ReportEditor({ report, projectId, onUpdate }: Props) {
       if (!res.ok) throw new Error("Failed to publish");
 
       onUpdate({ ...report, status: "published" });
-    } catch (err) {
+    } catch {
       alert("Failed to publish report. Please check your connection.");
     } finally {
       setSaving(false);
@@ -127,10 +129,24 @@ export function ReportEditor({ report, projectId, onUpdate }: Props) {
       });
       if (!res.ok) throw new Error("Failed to send");
       alert("Notification email resent to client.");
-    } catch (err) {
+    } catch {
       alert("Failed to resend email.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/report/download?projectId=${projectId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to get PDF");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch {
+      alert("Unable to download PDF right now.");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -171,6 +187,14 @@ export function ReportEditor({ report, projectId, onUpdate }: Props) {
                   loading={saving}
                 >
                   <Send className="w-4 h-4" /> Resend email
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={downloadPdf}
+                  loading={downloading}
+                >
+                  <Download className="w-4 h-4" /> Download PDF
                 </Button>
               </div>
             ) : (
