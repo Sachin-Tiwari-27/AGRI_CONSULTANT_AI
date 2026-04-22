@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/FormFields";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { createClient } from "@/lib/supabase/client";
 import {
   CheckCircle,
@@ -250,9 +251,7 @@ export function ReportEditor({ report, projectId, onUpdate }: Props) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap text-sm leading-relaxed">
-                      {section.content}
-                    </div>
+                    <MarkdownRenderer content={section.content} />
                     <div className="flex gap-2 pt-2 border-t border-slate-100">
                       <Button
                         size="sm"

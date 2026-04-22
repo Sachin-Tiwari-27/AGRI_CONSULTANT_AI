@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+}
+
 @layer base {
   * { box-sizing: border-box; }
   html { -webkit-font-smoothing: antialiased; }
@@ -10,4 +14,15 @@
 @layer utilities {
   .prose-report p { @apply mb-3 leading-relaxed; }
   .prose-report h3 { @apply font-semibold text-slate-900 mb-2 mt-5; }
+  /* Markdown table styles */
+  .markdown-body table { @apply w-full border-collapse text-sm mb-4; }
+  .markdown-body th { @apply text-left px-3 py-2 bg-slate-50 border border-slate-200 font-semibold text-slate-700; }
+  .markdown-body td { @apply px-3 py-2 border border-slate-200 text-slate-700; }
+  .markdown-body tr:nth-child(even) td { @apply bg-slate-50/50; }
+  .markdown-body ul { @apply list-disc pl-5 space-y-1 mb-3; }
+  .markdown-body ol { @apply list-decimal pl-5 space-y-1 mb-3; }
+  .markdown-body strong { @apply font-semibold text-slate-900; }
+  .markdown-body h2 { @apply text-xl font-bold text-slate-900 mt-6 mb-3; }
+  .markdown-body h3 { @apply text-base font-semibold text-slate-800 mt-4 mb-2; }
+  .markdown-body blockquote { @apply border-l-4 border-green-300 pl-4 text-slate-600 italic; }
 }

@@ -26,13 +26,14 @@ type FormData = z.infer<typeof schema>
 
 const CROP_OPTIONS = [
   'Cherry Tomato', 'Beef Tomato', 'Capsicum', 'Cucumber', 'Lettuce',
-  'Herbs', 'Strawberry', 'Microgreens', 'Fig', 'Chilli', 'Eggplant',
+  'Herbs', 'Strawberry', 'Microgreens', 'Fig', 'Chilli', 'Eggplant', 'Other',
 ]
 
 export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [selectedCrops, setSelectedCrops] = useState<string[]>([])
+  const [customCrop, setCustomCrop] = useState('')
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -42,6 +43,14 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
     setSelectedCrops(prev =>
       prev.includes(crop) ? prev.filter(c => c !== crop) : [...prev, crop]
     )
+  }
+
+  function addCustomCrop() {
+    const trimmed = customCrop.trim()
+    if (trimmed && !selectedCrops.includes(trimmed)) {
+      setSelectedCrops(prev => [...prev.filter(c => c !== 'Other'), trimmed])
+      setCustomCrop('')
+    }
   }
 
   async function onSubmit(data: FormData) {
@@ -146,7 +155,6 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Crops */}
           <div>
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Target crops</h3>
             <div className="flex flex-wrap gap-2">
@@ -165,6 +173,35 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                 </button>
               ))}
             </div>
+            {selectedCrops.includes('Other') && (
+              <div className="flex gap-2 mt-3">
+                <input
+                  type="text"
+                  value={customCrop}
+                  onChange={e => setCustomCrop(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomCrop())}
+                  placeholder="Type custom crop name..."
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <button
+                  type="button"
+                  onClick={addCustomCrop}
+                  className="px-3 py-1.5 text-sm bg-green-800 text-white rounded-lg hover:bg-green-700"
+                >
+                  Add
+                </button>
+              </div>
+            )}
+            {selectedCrops.filter(c => c !== 'Other').length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {selectedCrops.filter(c => !CROP_OPTIONS.includes(c)).map(c => (
+                  <span key={c} className="px-2 py-0.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full flex items-center gap-1">
+                    {c}
+                    <button type="button" onClick={() => setSelectedCrops(p => p.filter(x => x !== c))} className="hover:text-red-500">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Notes */}

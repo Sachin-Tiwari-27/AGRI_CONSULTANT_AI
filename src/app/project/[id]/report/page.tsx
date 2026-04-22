@@ -11,21 +11,26 @@ export default async function ClientReportPage({
   const { id } = await params
   const supabase = await createServiceClient()
 
-  // Fetch report and associated project data
-  const { data: report } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('project_id', id)
-    .single()
+  // Fetch report and project status together
+  const [{ data: report }, { data: project }] = await Promise.all([
+    supabase.from('reports').select('*').eq('project_id', id).single(),
+    supabase.from('projects').select('status').eq('id', id).single(),
+  ])
 
   // Ensure report exists and is published
   if (!report || report.status !== 'published') {
     notFound()
   }
 
+  const paid = project?.status === 'completed'
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <PublicReportView report={report as unknown as Report} />
+      <PublicReportView
+        report={report as unknown as Report}
+        paid={paid}
+        projectId={id}
+      />
     </div>
   )
 }
