@@ -10,6 +10,10 @@ export interface Profile {
   avatar_url?: string
   company_name?: string
   phone?: string
+  // Payment Preferences
+  payment_preference?: 'always_upfront' | 'project_basis'
+  default_currency?: string
+  default_amount?: number
   created_at: string
 }
 
@@ -55,6 +59,7 @@ export interface Project {
   meet_recording_url?: string
   // report
   report_price?: number
+  currency?: string
   report_published_at?: string
   // metadata
   created_at: string
@@ -73,6 +78,7 @@ export type QuestionType =
   | 'file_upload'
   | 'gps'
   | 'date'
+  | 'currency'
 
 export interface QuestionOption {
   value: string
@@ -153,7 +159,7 @@ export type AITask =
   | 'report_conclusion'
   | 'call_brief_summary'
 
-export type AIProvider = 'openrouter' | 'anthropic' | 'openai'
+export type AIProvider = 'openrouter' | 'anthropic' | 'openai' | 'google'
 
 export interface AIRequest {
   task: AITask

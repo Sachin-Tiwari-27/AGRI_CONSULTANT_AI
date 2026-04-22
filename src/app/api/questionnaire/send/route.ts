@@ -18,21 +18,36 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await supabase
     .from('profiles').select('full_name, company_name').eq('id', user.id).single()
 
-  // Create submission record with unique token
-  const serviceClient = await createServiceClient()
-  const { data: submission, error } = await serviceClient
+  // Check if a pending (unsubmitted) submission already exists for this round/project
+  const { data: existing } = await supabase
     .from('questionnaire_submissions')
-    .insert({
-      project_id: projectId,
-      template_id: templateId,
-      client_email: project.client_email,
-      round,
-    })
-    .select()
-    .single()
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('round', round)
+    .is('submitted_at', null)
+    .maybeSingle()
 
-  if (error || !submission)
-    return NextResponse.json({ error: 'Failed to create submission' }, { status: 500 })
+  let submission = existing
+
+  if (!submission) {
+    // Create new submission record only if none exists
+    const serviceClient = await createServiceClient()
+    const { data: newSubmission, error } = await serviceClient
+      .from('questionnaire_submissions')
+      .insert({
+        project_id: projectId,
+        template_id: templateId,
+        client_email: project.client_email,
+        round,
+      })
+      .select()
+      .single()
+
+    if (error || !newSubmission)
+      return NextResponse.json({ error: 'Failed to create submission' }, { status: 500 })
+    
+    submission = newSubmission
+  }
 
   // Send email
   await sendQuestionnaireInvite({

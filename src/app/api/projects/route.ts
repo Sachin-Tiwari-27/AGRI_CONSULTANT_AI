@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     title, client_name, client_email,
     region, country, gps_coordinates, land_size_sqm,
     crop_types, project_type, climate_zone,
-    budget_range, experience_level, target_market,
+    budget_range, currency, experience_level, target_market,
     funding_status, consultant_notes,
     meet_scheduled_at, meet_link,
   } = body
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       title, client_name, client_email,
       region, country, gps_coordinates, land_size_sqm,
       crop_types, project_type, climate_zone,
-      budget_range, experience_level, target_market,
+      budget_range, currency, experience_level, target_market,
       funding_status, consultant_notes,
       meet_scheduled_at, meet_link,
       status: meet_scheduled_at ? 'call_scheduled' : 'call_scheduled',

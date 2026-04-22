@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Textarea, Select } from '@/components/ui/FormFields'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, MapPin } from 'lucide-react'
+import { getCurrencyByGPS } from '@/lib/utils'
 
 const schema = z.object({
   title: z.string().min(3, 'Title is required'),
@@ -18,6 +19,7 @@ const schema = z.object({
   land_size_sqm: z.string().optional(),
   project_type: z.string().optional(),
   budget_range: z.string().optional(),
+  currency: z.string().optional(),
   experience_level: z.string().optional(),
   consultant_notes: z.string().optional(),
 })
@@ -35,9 +37,28 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const [selectedCrops, setSelectedCrops] = useState<string[]>([])
   const [customCrop, setCustomCrop] = useState('')
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
+
+  const watchedGPS = watch('gps_coordinates')
+
+  // Auto-set currency when GPS changes
+  useState(() => {
+    if (watchedGPS) {
+      const currency = getCurrencyByGPS(watchedGPS)
+      setValue('currency', currency)
+    }
+  })
+
+  // We use useEffect to react to watch changes
+  const React = require('react')
+  React.useEffect(() => {
+    if (watchedGPS) {
+      const currency = getCurrencyByGPS(watchedGPS)
+      setValue('currency', currency)
+    }
+  }, [watchedGPS, setValue])
 
   function toggleCrop(crop: string) {
     setSelectedCrops(prev =>
@@ -150,7 +171,22 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                 />
               </Field>
               <Field label="Budget range">
-                <Input {...register('budget_range')} placeholder="e.g. OMR 500,000 – 800,000" className="col-span-2" />
+                <div className="flex gap-2">
+                  <Select
+                    {...register('currency')}
+                    className="w-24"
+                    options={[
+                      { value: 'OMR', label: 'OMR' },
+                      { value: 'USD', label: 'USD' },
+                      { value: 'AED', label: 'AED' },
+                      { value: 'SAR', label: 'SAR' },
+                      { value: 'QAR', label: 'QAR' },
+                      { value: 'KWD', label: 'KWD' },
+                      { value: 'BHD', label: 'BHD' },
+                    ]}
+                  />
+                  <Input {...register('budget_range')} placeholder="e.g. 500,000 – 800,000" className="flex-1" />
+                </div>
               </Field>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { TopBar } from '@/components/layout/Sidebar'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Field, Input } from '@/components/ui/FormFields'
 import { Button } from '@/components/ui/Button'
+import { PaymentSettingsForm } from '@/components/settings/PaymentSettingsForm'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -46,6 +47,8 @@ export default async function SettingsPage() {
             </p>
           </CardBody>
         </Card>
+
+        {profile && <PaymentSettingsForm profile={profile} />}
 
         <Card className="mt-6 border-red-100 bg-red-50/30">
           <CardBody className="flex items-center justify-between">

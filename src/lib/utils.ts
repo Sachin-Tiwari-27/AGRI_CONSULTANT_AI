@@ -56,3 +56,25 @@ export const PROJECT_STATUS_COLORS: Record<string, string> = {
   payment_pending: 'bg-yellow-100 text-yellow-800',
   completed: 'bg-green-100 text-green-800',
 }
+
+export function getCurrencyByGPS(coords: string): string {
+  const parsed = parseGPS(coords)
+  if (!parsed) return 'OMR'
+
+  const { lat, lon } = parsed
+  
+  // Oman
+  if (lat >= 16 && lat <= 27 && lon >= 52 && lon <= 60) return 'OMR'
+  // UAE
+  if (lat >= 22 && lat <= 26 && lon >= 51 && lon <= 57) return 'AED'
+  // Saudi Arabia
+  if (lat >= 16 && lat <= 33 && lon >= 34 && lon <= 56) return 'SAR'
+  // Qatar
+  if (lat >= 24 && lat <= 27 && lon >= 50 && lon <= 52) return 'QAR'
+  // Kuwait
+  if (lat >= 28 && lat <= 31 && lon >= 46 && lon <= 49) return 'KWD'
+  // Bahrain
+  if (lat >= 25 && lat <= 27 && lon >= 50 && lon <= 51) return 'BHD'
+
+  return 'USD'
+}

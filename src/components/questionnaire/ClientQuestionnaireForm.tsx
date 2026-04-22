@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Input, Textarea, Field } from '@/components/ui/FormFields'
+import { Input, Textarea, Field, Select } from '@/components/ui/FormFields'
 import { CheckCircle, Upload, Leaf } from 'lucide-react'
 import type { QuestionnaireTemplate, QuestionnaireSubmission, Question } from '@/types'
 
@@ -281,6 +281,24 @@ function QuestionField({
           value={(value as string) || ''}
           onChange={e => onChange(e.target.value)}
           placeholder="Paste Google Maps link or enter lat, lon"
+        />
+      )}
+
+      {question.type === 'currency' && (
+        <Select
+          {...{
+            value: (value as string) || 'OMR',
+            onChange: (e: any) => onChange(e.target.value),
+            options: [
+              { value: 'OMR', label: 'OMR - Omani Rial' },
+              { value: 'USD', label: 'USD - US Dollar' },
+              { value: 'AED', label: 'AED - UAE Dirham' },
+              { value: 'SAR', label: 'SAR - Saudi Riyal' },
+              { value: 'QAR', label: 'QAR - Qatari Riyal' },
+              { value: 'KWD', label: 'KWD - Kuwaiti Dinar' },
+              { value: 'BHD', label: 'BHD - Bahraini Dinar' },
+            ]
+          }}
         />
       )}
     </div>

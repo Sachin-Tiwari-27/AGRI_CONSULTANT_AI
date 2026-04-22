@@ -1,5 +1,5 @@
 import type { AIRequest, AIResponse, AIProvider, AITask } from "@/types";
-import { PROMPTS, buildPrompt } from "./prompts.store";
+import { buildPrompt } from "./prompts.store";
 
 // ── Provider configuration ────────────────────────────────────────────
 const PROVIDER_CONFIG: Record<
@@ -9,7 +9,8 @@ const PROVIDER_CONFIG: Record<
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
     apiKeyEnv: "OPENROUTER_API_KEY",
-    defaultModel: "nvidia/nemotron-3-super-120b-a12b:free",
+    // Best free model for long-form writing on OpenRouter
+    defaultModel: "google/gemma-4-26b-a4b-it:free",
   },
   anthropic: {
     baseURL: "https://api.anthropic.com/v1",
@@ -21,21 +22,43 @@ const PROVIDER_CONFIG: Record<
     apiKeyEnv: "OPENAI_API_KEY",
     defaultModel: "gpt-4o",
   },
+  google: {
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+    apiKeyEnv: "GOOGLE_AI_API_KEY",
+    defaultModel: "gemini-2.0-flash",
+  },
 };
 
-// ── Per-task model overrides (use cheap model for simple tasks) ───────
+// ── Per-task model overrides ──────────────────────────────────────────
+// Free tier strategy:
+//   - JSON tasks (clarification, financial): use Gemini Flash — it reliably
+//     returns clean JSON without markdown wrapping
+//   - Long-form writing (report sections): use Gemini Flash or Llama 3.1 70B
+//     both have high context windows and good instruction following
+//   - Simple tasks: same free model is fine
+//
+// Paid tier (set AI_PROVIDER=anthropic or change models below):
+//   - JSON tasks: claude-haiku-4-5 (fast + cheap)
+//   - Report drafting: claude-sonnet-4-5 (best quality)
 const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
-  clarification_check: "google/gemma-4-31b-it:free", // fast + cheap for gap detection
-  followup_questions: "google/gemma-4-31b-it:free",
-  climate_analysis: "google/gemma-4-31b-it:free", // mostly template + data injection
-  report_executive_summary: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_market_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_business_model: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_conclusion: "nvidia/nemotron-3-super-120b-a12b:free",
-  financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
-  market_research: "nvidia/nemotron-3-super-120b-a12b:free",
+  // If using Google AI, we use their fast and capable models
+  clarification_check: "gemini-1.5-flash",
+  followup_questions: "gemini-1.5-flash",
+  financial_projection: "gemini-2.0-flash",
+  call_brief_summary: "gemini-1.5-flash",
+
+  // Analysis tasks
+  climate_analysis: "gemini-2.0-flash",
+  technical_analysis: "gemini-2.0-flash",
+  market_research: "gemini-2.0-flash",
+
+  // Report sections — gemini-2.0-flash is excellent for high-volume drafting
+  report_executive_summary: "gemini-2.0-flash",
+  report_market_analysis: "gemini-2.0-flash",
+  report_business_model: "gemini-2.0-flash",
+  report_financial_projection: "gemini-2.0-flash",
+  report_risk_mitigation: "gemini-2.0-flash",
+  report_conclusion: "gemini-2.0-flash",
 };
 
 // ── Main AI call function ─────────────────────────────────────────────
@@ -46,7 +69,10 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
   if (!config) throw new Error(`Unknown AI provider: ${providerName}`);
 
   const apiKey = process.env[config.apiKeyEnv];
-  if (!apiKey) throw new Error(`Missing API key for provider: ${providerName}`);
+  if (!apiKey)
+    throw new Error(
+      `Missing API key for provider: ${providerName} — check your .env.local`,
+    );
 
   const model = TASK_MODEL_OVERRIDES[request.task] || config.defaultModel;
   const prompt = buildPrompt(request.task, request.variables);
@@ -57,7 +83,6 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
     Authorization: `Bearer ${apiKey}`,
   };
 
-  // OpenRouter-specific headers
   if (providerName === "openrouter") {
     headers["HTTP-Referer"] =
       process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -70,58 +95,141 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
     messages: [{ role: "user", content: prompt }],
   });
 
-  const response = await fetch(`${config.baseURL}/chat/completions`, {
-    method: "POST",
-    headers,
-    body,
-  });
+  // Retry with exponential backoff — important for free tier rate limits
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`AI API error ${response.status}: ${error}`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      // Wait 2s, 4s before retries — gives rate limiter time to reset
+      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      console.warn(
+        `[AI] Retry ${attempt}/${maxRetries - 1} for task: ${request.task}`,
+      );
+    }
+
+    const response = await fetch(`${config.baseURL}/chat/completions`, {
+      method: "POST",
+      headers,
+      body,
+    });
+
+    if (response.status === 429) {
+      lastError = new Error(`Rate limited (429) on attempt ${attempt + 1}`);
+      continue; // retry
+    }
+
+    if (response.status === 503 || response.status === 502) {
+      lastError = new Error(
+        `Model unavailable (${response.status}) — may be overloaded`,
+      );
+      continue; // retry
+    }
+
+    if (!response.ok) {
+      const errorStr = await response.text();
+      // Don't retry on 400/401/403 — these are config errors
+      throw new Error(`AI API error ${response.status}: ${errorStr}`);
+    }
+
+    const data = await response.json();
+
+    // Some free models return an error inside a 200 response
+    if (data.error) {
+      throw new Error(`AI model error: ${JSON.stringify(data.error)}`);
+    }
+
+    const content = data.choices?.[0]?.message?.content || "";
+    const tokensUsed = data.usage?.total_tokens || 0;
+
+    if (!content) {
+      lastError = new Error("AI returned empty content");
+      continue; // retry
+    }
+
+    return {
+      content,
+      tokensUsed,
+      model: data.model || model,
+      provider: providerName,
+      durationMs: Date.now() - startMs,
+    };
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
-  const tokensUsed = data.usage?.total_tokens || 0;
-
-  return {
-    content,
-    tokensUsed,
-    model: data.model || model,
-    provider: providerName,
-    durationMs: Date.now() - startMs,
-  };
+  throw (
+    lastError ||
+    new Error(
+      `AI call failed after ${maxRetries} attempts for task: ${request.task}`,
+    )
+  );
 }
 
-// ── JSON-safe AI call (for structured outputs) ────────────────────────
+// ── JSON-safe AI call ─────────────────────────────────────────────────
+// Robust extraction: handles markdown fences, preamble text, and arrays
 export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
   const response = await callAI({
     ...request,
     maxTokens: request.maxTokens || 2000,
   });
 
-  let cleaned = response.content
+  const content = response.content.trim();
+
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[AI-JSON] Task: ${request.task} | Model: ${response.model}`);
+    console.log(`[AI-JSON] Raw (first 200): ${content.substring(0, 200)}`);
+  }
+
+  // Strategy 1: strip markdown fences and parse directly
+  const stripped = content
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 
-  // Robust extraction: find the first { and last } if JSON parsing fails initially
   try {
-    return JSON.parse(cleaned) as T;
-  } catch (e) {
-    const startIdx = cleaned.indexOf("{");
-    const endIdx = cleaned.lastIndexOf("}");
-    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      cleaned = cleaned.substring(startIdx, endIdx + 1);
-      return JSON.parse(cleaned) as T;
+    return JSON.parse(stripped) as T;
+  } catch {
+    // Strategy 2: find the outermost JSON object or array
+    const objStart = content.indexOf("{");
+    const arrStart = content.indexOf("[");
+    const objEnd = content.lastIndexOf("}");
+    const arrEnd = content.lastIndexOf("]");
+
+    // Pick whichever valid structure appears first
+    let jsonStr: string | null = null;
+
+    if (
+      objStart !== -1 &&
+      objEnd > objStart &&
+      (arrStart === -1 || objStart <= arrStart)
+    ) {
+      jsonStr = content.substring(objStart, objEnd + 1);
+    } else if (arrStart !== -1 && arrEnd > arrStart) {
+      jsonStr = content.substring(arrStart, arrEnd + 1);
     }
-    throw e;
+
+    if (jsonStr) {
+      try {
+        return JSON.parse(jsonStr) as T;
+      } catch (e) {
+        console.error(
+          "[AI-JSON] Isolated JSON parse failed:",
+          jsonStr.substring(0, 300),
+        );
+        throw new Error(
+          `AI returned malformed JSON for task "${request.task}": ${e instanceof Error ? e.message : "parse error"}`,
+        );
+      }
+    }
+
+    console.error("[AI-JSON] No JSON structure found in:", content);
+    throw new Error(
+      `AI response for task "${request.task}" contained no JSON. Raw: ${content.substring(0, 200)}`,
+    );
   }
 }
 
-// ── Log AI usage to Supabase ──────────────────────────────────────────
+// ── Log AI usage ──────────────────────────────────────────────────────
 export async function logAIUsage(
   response: AIResponse,
   task: AITask,
@@ -142,6 +250,5 @@ export async function logAIUsage(
     });
   } catch (err) {
     console.error("Failed to log AI usage:", err);
-    // Non-fatal — don't break the flow
   }
 }

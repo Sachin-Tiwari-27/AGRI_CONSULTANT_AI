@@ -219,3 +219,9 @@ create policy "Consultant sees own payments" on public.payments
 -- Storage policies
 -- create policy "Authenticated users can upload" on storage.objects for insert with check (auth.role() = 'authenticated');
 -- create policy "Users access own uploads" on storage.objects for select using (auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ── Schema Updates ───────────────────────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS payment_preference text CHECK (payment_preference IN ('always_upfront', 'project_basis'));
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS default_currency text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS default_amount numeric;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS currency text;
