@@ -90,7 +90,13 @@ export async function fetchClimateData(
     const url = new URL("https://archive-api.open-meteo.com/v1/archive");
     url.searchParams.set("latitude", lat.toString());
     url.searchParams.set("longitude", lon.toString());
-    url.searchParams.set("models", "EC_Earth3P_HR");
+
+    // Fix #1: Use a valid model for the historical API (or remove to default to 'best_match')
+    url.searchParams.set("models", "era5");
+
+    // Fix #2: Timezone is required when querying "daily" variables
+    url.searchParams.set("timezone", "auto");
+
     url.searchParams.set(
       "daily",
       "temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_max",
@@ -103,7 +109,6 @@ export async function fetchClimateData(
 
     const data = await response.json();
 
-    // Aggregate to monthly averages for prompt injection
     const monthly: Record<
       number,
       { maxTemps: number[]; minTemps: number[]; humidity: number[] }
@@ -113,11 +118,13 @@ export async function fetchClimateData(
 
     data.daily.time.forEach((date: string, i: number) => {
       const month = parseInt(date.split("-")[1]);
-      if (data.daily.temperature_2m_max[i])
+
+      // Fix #3: Explicitly check against null so 0 degree days aren't skipped
+      if (data.daily.temperature_2m_max[i] !== null)
         monthly[month].maxTemps.push(data.daily.temperature_2m_max[i]);
-      if (data.daily.temperature_2m_min[i])
+      if (data.daily.temperature_2m_min[i] !== null)
         monthly[month].minTemps.push(data.daily.temperature_2m_min[i]);
-      if (data.daily.relative_humidity_2m_max[i])
+      if (data.daily.relative_humidity_2m_max[i] !== null)
         monthly[month].humidity.push(data.daily.relative_humidity_2m_max[i]);
     });
 
@@ -135,6 +142,7 @@ export async function fetchClimateData(
       "Nov",
       "Dec",
     ];
+
     const avg = (arr: number[]) =>
       arr.length
         ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1)
