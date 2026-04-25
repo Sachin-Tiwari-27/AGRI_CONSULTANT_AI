@@ -9,60 +9,196 @@ const PROVIDER_CONFIG: Record<
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
     apiKeyEnv: "OPENROUTER_API_KEY",
-    // Best free model for long-form writing on OpenRouter
-    defaultModel: "google/gemma-4-26b-a4b-it:free",
+    defaultModel: "minimax/minimax-m2.5:free",
   },
   anthropic: {
     baseURL: "https://api.anthropic.com/v1",
     apiKeyEnv: "ANTHROPIC_API_KEY",
-    defaultModel: "claude-sonnet-4-5",
+    defaultModel: "claude-haiku-4-5",
   },
   openai: {
     baseURL: "https://api.openai.com/v1",
     apiKeyEnv: "OPENAI_API_KEY",
-    defaultModel: "gpt-4o",
+    defaultModel: "gpt-4o-mini",
   },
   google: {
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKeyEnv: "GOOGLE_AI_API_KEY",
-    defaultModel: "gemini-2.0-flash",
+    defaultModel: "gemini-2.5-flash",
   },
 };
 
 // ── Per-task model overrides ──────────────────────────────────────────
-// Free tier strategy:
-//   - JSON tasks (clarification, financial): use Gemini Flash — it reliably
-//     returns clean JSON without markdown wrapping
-//   - Long-form writing (report sections): use Gemini Flash or Llama 3.1 70B
-//     both have high context windows and good instruction following
-//   - Simple tasks: same free model is fine
-//
-// Paid tier (set AI_PROVIDER=anthropic or change models below):
-//   - JSON tasks: claude-haiku-4-5 (fast + cheap)
-//   - Report drafting: claude-sonnet-4-5 (best quality)
 const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
-  // If using Google AI, we use their fast and capable models
-  clarification_check: "gemini-1.5-flash",
-  followup_questions: "gemini-1.5-flash",
-  financial_projection: "gemini-2.0-flash",
-  call_brief_summary: "gemini-1.5-flash",
-
-  // Analysis tasks
-  climate_analysis: "gemini-2.0-flash",
-  technical_analysis: "gemini-2.0-flash",
-  market_research: "gemini-2.0-flash",
-
-  // Report sections — gemini-2.0-flash is excellent for high-volume drafting
-  report_executive_summary: "gemini-2.0-flash",
-  report_market_analysis: "gemini-2.0-flash",
-  report_business_model: "gemini-2.0-flash",
-  report_financial_projection: "gemini-2.0-flash",
-  report_risk_mitigation: "gemini-2.0-flash",
-  report_conclusion: "gemini-2.0-flash",
+  clarification_check: "minimax/minimax-m2.5:free",
+  followup_questions: "minimax/minimax-m2.5:free",
+  financial_projection: "minimax/minimax-m2.5:free",
+  call_brief_summary: "minimax/minimax-m2.5:free",
+  climate_analysis: "minimax/minimax-m2.5:free",
+  technical_analysis: "minimax/minimax-m2.5:free",
+  market_research: "minimax/minimax-m2.5:free",
+  report_executive_summary: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_market_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_business_model: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_conclusion: "nvidia/nemotron-3-super-120b-a12b:free",
 };
+
+// ── Token budget per task (keeps prompts lean) ────────────────────────
+// These are OUTPUT token limits. Smaller = faster + less likely to hit rate limits.
+const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
+  clarification_check: 800,
+  followup_questions: 600,
+  financial_projection: 1000,
+  call_brief_summary: 500,
+  technical_analysis: 800,
+  climate_analysis: 600,
+  market_research: 700,
+  report_executive_summary: 900,
+  report_market_analysis: 900,
+  report_business_model: 700,
+  report_financial_projection: 900,
+  report_risk_mitigation: 700,
+  report_conclusion: 500,
+};
+
+// ── Context trimming helpers ──────────────────────────────────────────
+// Questionnaire answers injected into prompts can be enormous.
+// We trim them to the most relevant fields per task to reduce token usage.
+
+const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
+  technical_analysis: [
+    "q4",
+    "q5",
+    "q6",
+    "q7",
+    "q8",
+    "q10",
+    "q11",
+    "q12",
+    "q13",
+    "q14",
+    "q16",
+    "q17",
+    "q20",
+    "water_source",
+    "water_ec_tds",
+    "power_source",
+    "land_size",
+    "gps",
+    "crop_types",
+    "technology_level",
+    "budget",
+  ],
+  clarification_check: [
+    "q4",
+    "q5",
+    "q6",
+    "q7",
+    "q8",
+    "q10",
+    "q14",
+    "q20",
+    "water_source",
+    "water_ec_tds",
+    "power_source",
+    "gps",
+  ],
+  report_executive_summary: ["q14", "q16", "q17", "q18", "q20", "q22"],
+  report_market_analysis: ["q14", "q18", "q19", "q20"],
+  report_business_model: ["q14", "q16", "q17", "q18", "q19"],
+  report_financial_projection: ["q5", "q14", "q16", "q20"],
+  report_risk_mitigation: ["q6", "q7", "q10", "q14", "q16"],
+  report_conclusion: ["q14", "q17", "q18", "q20", "q22"],
+};
+
+/**
+ * Trim questionnaire answers to only relevant fields for a given task.
+ * Falls back to all answers if no filter is defined.
+ * Also caps the total JSON size to prevent prompt bloat.
+ */
+export function trimAnswersForTask(
+  answers: Record<string, unknown>,
+  task: AITask,
+  maxChars = 1500,
+): string {
+  const relevantKeys = RELEVANT_ANSWER_KEYS[task];
+  let filtered: Record<string, unknown>;
+
+  if (relevantKeys) {
+    filtered = Object.fromEntries(
+      Object.entries(answers).filter(([k]) =>
+        relevantKeys.some((rk) => k.toLowerCase().includes(rk.toLowerCase())),
+      ),
+    );
+    // If filter was too aggressive and returned nothing, fall back to all
+    if (Object.keys(filtered).length === 0) filtered = answers;
+  } else {
+    filtered = answers;
+  }
+
+  const json = JSON.stringify(filtered, null, 2);
+  if (json.length <= maxChars) return json;
+
+  // Truncate gracefully — cut to char limit and close the JSON
+  return json.slice(0, maxChars) + "\n  ... (truncated for brevity)\n}";
+}
+
+/**
+ * Trim a long freeform text (market research, climate data) to a safe length.
+ */
+export function trimContext(text: string, maxChars = 2000): string {
+  if (!text || text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n... [truncated]";
+}
+
+// ── Rate limiter — simple in-process queue ────────────────────────────
+// Ensures we never fire more than N requests per second to the AI API,
+// which is the primary cause of 429 errors on free/shared keys.
+
+const REQUEST_QUEUE: Array<() => Promise<void>> = [];
+let isProcessingQueue = false;
+
+// Minimum milliseconds between AI API calls
+// Increase this if you're still hitting 429s (try 3000 for very tight rate limits)
+const MIN_DELAY_MS = Number(process.env.AI_REQUEST_DELAY_MS ?? 1500);
+
+async function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    REQUEST_QUEUE.push(async () => {
+      try {
+        resolve(await fn());
+      } catch (e) {
+        reject(e);
+      }
+    });
+    if (!isProcessingQueue) processQueue();
+  });
+}
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  while (REQUEST_QUEUE.length > 0) {
+    const next = REQUEST_QUEUE.shift();
+    if (next) {
+      await next();
+      if (REQUEST_QUEUE.length > 0) {
+        // Wait between requests to respect rate limits
+        await new Promise((r) => setTimeout(r, MIN_DELAY_MS));
+      }
+    }
+  }
+  isProcessingQueue = false;
+}
 
 // ── Main AI call function ─────────────────────────────────────────────
 export async function callAI(request: AIRequest): Promise<AIResponse> {
+  return enqueueRequest(() => _callAI(request));
+}
+
+async function _callAI(request: AIRequest): Promise<AIResponse> {
   const providerName = (process.env.AI_PROVIDER || "openrouter") as AIProvider;
   const config = PROVIDER_CONFIG[providerName];
 
@@ -76,6 +212,7 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
 
   const model = TASK_MODEL_OVERRIDES[request.task] || config.defaultModel;
   const prompt = buildPrompt(request.task, request.variables);
+  const maxTokens = request.maxTokens ?? TASK_MAX_TOKENS[request.task] ?? 1000;
   const startMs = Date.now();
 
   const headers: Record<string, string> = {
@@ -91,21 +228,22 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
 
   const body = JSON.stringify({
     model,
-    max_tokens: request.maxTokens || 2000,
+    max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   });
 
-  // Retry with exponential backoff — important for free tier rate limits
-  const maxRetries = 3;
+  // Retry with exponential backoff
+  const maxRetries = 4;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {
-      // Wait 2s, 4s before retries — gives rate limiter time to reset
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      // Exponential backoff: 2s, 4s, 8s
+      const waitMs = Math.pow(2, attempt) * 1000;
       console.warn(
-        `[AI] Retry ${attempt}/${maxRetries - 1} for task: ${request.task}`,
+        `[AI] Retry ${attempt}/${maxRetries - 1} for task: ${request.task} — waiting ${waitMs}ms`,
       );
+      await new Promise((r) => setTimeout(r, waitMs));
     }
 
     const response = await fetch(`${config.baseURL}/chat/completions`, {
@@ -115,26 +253,31 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
     });
 
     if (response.status === 429) {
+      // Try to respect Retry-After header if present
+      const retryAfter = response.headers.get("Retry-After");
+      const waitMs = retryAfter
+        ? parseInt(retryAfter) * 1000
+        : Math.pow(2, attempt + 1) * 1000;
+      console.warn(`[AI] 429 Rate limited — waiting ${waitMs}ms before retry`);
+      await new Promise((r) => setTimeout(r, waitMs));
       lastError = new Error(`Rate limited (429) on attempt ${attempt + 1}`);
-      continue; // retry
+      continue;
     }
 
     if (response.status === 503 || response.status === 502) {
       lastError = new Error(
         `Model unavailable (${response.status}) — may be overloaded`,
       );
-      continue; // retry
+      continue;
     }
 
     if (!response.ok) {
       const errorStr = await response.text();
-      // Don't retry on 400/401/403 — these are config errors
       throw new Error(`AI API error ${response.status}: ${errorStr}`);
     }
 
     const data = await response.json();
 
-    // Some free models return an error inside a 200 response
     if (data.error) {
       throw new Error(`AI model error: ${JSON.stringify(data.error)}`);
     }
@@ -144,7 +287,7 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
 
     if (!content) {
       lastError = new Error("AI returned empty content");
-      continue; // retry
+      continue;
     }
 
     return {
@@ -165,11 +308,10 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
 }
 
 // ── JSON-safe AI call ─────────────────────────────────────────────────
-// Robust extraction: handles markdown fences, preamble text, and arrays
 export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
   const response = await callAI({
     ...request,
-    maxTokens: request.maxTokens || 2000,
+    maxTokens: request.maxTokens ?? TASK_MAX_TOKENS[request.task] ?? 1000,
   });
 
   const content = response.content.trim();
@@ -179,7 +321,6 @@ export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
     console.log(`[AI-JSON] Raw (first 200): ${content.substring(0, 200)}`);
   }
 
-  // Strategy 1: strip markdown fences and parse directly
   const stripped = content
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
@@ -189,13 +330,11 @@ export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
   try {
     return JSON.parse(stripped) as T;
   } catch {
-    // Strategy 2: find the outermost JSON object or array
     const objStart = content.indexOf("{");
     const arrStart = content.indexOf("[");
     const objEnd = content.lastIndexOf("}");
     const arrEnd = content.lastIndexOf("]");
 
-    // Pick whichever valid structure appears first
     let jsonStr: string | null = null;
 
     if (

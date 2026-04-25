@@ -205,6 +205,7 @@ export type ReportSectionKey =
   | 'conclusion'
   | 'context_market_data'
   | 'context_climate_data'
+  | 'technical_analysis'
 export interface ReportSection {
   key: ReportSectionKey
   title: string

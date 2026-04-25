@@ -792,7 +792,7 @@ export function ProjectWorkspace({
                       </div>
                       <Button
                         size="sm"
-                        onClick={generateReport}
+                        onClick={() => generateReport()}
                         loading={loading === "report"}
                         disabled={loading === "report"}
                       >
@@ -1236,10 +1236,10 @@ export function ProjectWorkspace({
                           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                           <YAxis
                             tick={{ fontSize: 11 }}
-                            tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
+                            tickFormatter={(v: any) => `${(Number(v ?? 0) / 1000).toFixed(0)}K`}
                           />
                           <Tooltip
-                            formatter={(v: number) => formatCurrency(v)}
+                            formatter={(v: any) => formatCurrency(Number(v ?? 0))}
                           />
                           <Bar
                             dataKey="revenue"
@@ -1278,7 +1278,7 @@ export function ProjectWorkspace({
                             ))}
                           </Pie>
                           <Tooltip
-                            formatter={(v: number) => formatCurrency(v)}
+                            formatter={(v: any) => formatCurrency(Number(v ?? 0))}
                           />
                           <Legend />
                         </PieChart>
@@ -1310,7 +1310,7 @@ export function ProjectWorkspace({
               <div className="flex justify-end">
                 <Button
                   variant="secondary"
-                  onClick={generateReport}
+                  onClick={() => generateReport()}
                   loading={loading === "report"}
                   size="sm"
                 >
@@ -1399,7 +1399,7 @@ export function ProjectWorkspace({
                     financial projections, and live market research.
                   </p>
                   <Button
-                    onClick={generateReport}
+                    onClick={() => generateReport()}
                     loading={loading === "report"}
                     disabled={loading === "report"}
                   >
@@ -1419,7 +1419,7 @@ export function ProjectWorkspace({
                       Explore market info and climate data without generating
                     </p>
                   </div>
-                  {!analysisData && !report?.sections?.context_market_data && (
+                  {!analysisData && (!report || !report.sections?.context_market_data) && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1431,7 +1431,7 @@ export function ProjectWorkspace({
                     </Button>
                   )}
                 </CardHeader>
-                {(analysisData || report?.sections?.context_market_data) && (
+                {(analysisData || (report && report.sections?.context_market_data)) && (
                   <CardBody className="max-h-[600px] overflow-y-auto space-y-8 text-sm text-slate-700 bg-slate-50/50 p-6">
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 pb-2 border-b border-slate-200">

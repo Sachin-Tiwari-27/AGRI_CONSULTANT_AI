@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "clean:next": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
     "start": "next start",
     "lint": "eslint"
   },
