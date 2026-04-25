@@ -55,12 +55,12 @@ const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
   technical_analysis: 800,
   climate_analysis: 600,
   market_research: 700,
-  report_executive_summary: 900,
-  report_market_analysis: 900,
-  report_business_model: 700,
-  report_financial_projection: 900,
-  report_risk_mitigation: 700,
-  report_conclusion: 500,
+  report_executive_summary: 12000,
+  report_market_analysis: 12000,
+  report_business_model: 12000,
+  report_financial_projection: 12000,
+  report_risk_mitigation: 12000,
+  report_conclusion: 12000,
 };
 
 // ── Context trimming helpers ──────────────────────────────────────────
@@ -240,6 +240,9 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     if (attempt > 0) {
       // Exponential backoff: 2s, 4s, 8s
       const waitMs = Math.pow(2, attempt) * 1000;
+      console.log(
+        `[AI] Provider: ${providerName} | Model: ${model} | Task: ${request.task}`,
+      );
       console.warn(
         `[AI] Retry ${attempt}/${maxRetries - 1} for task: ${request.task} — waiting ${waitMs}ms`,
       );
@@ -258,6 +261,9 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
       const waitMs = retryAfter
         ? parseInt(retryAfter) * 1000
         : Math.pow(2, attempt + 1) * 1000;
+      console.log(
+        `[AI] Provider: ${providerName} | Model: ${model} | Task: ${request.task}`,
+      );
       console.warn(`[AI] 429 Rate limited — waiting ${waitMs}ms before retry`);
       await new Promise((r) => setTimeout(r, waitMs));
       lastError = new Error(`Rate limited (429) on attempt ${attempt + 1}`);
