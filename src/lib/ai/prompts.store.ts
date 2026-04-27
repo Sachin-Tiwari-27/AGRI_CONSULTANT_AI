@@ -1,11 +1,12 @@
-import type { AITask } from '@/types'
+import type { AITask } from "@/types";
 
 // ── Prompt store ──────────────────────────────────────────────────────
 // All prompts live here. Never inline in business logic.
 // Variables injected as {{variable_name}} — replaced at call time.
+// IMPORTANT: No hardcoded currencies, countries, or region-specific benchmarks.
+// All location/currency context comes from project variables.
 
 export const PROMPTS: Record<AITask, string> = {
-
   // ── Stage 1: summarise call notes ──────────────────────────────────
   call_brief_summary: `
 You are an expert agricultural consultant assistant. A consultant just completed an introductory call with a client.
@@ -40,19 +41,24 @@ Project context:
 - Location: {{region}}, {{country}}
 - Crop types: {{crop_types}}
 - Project type: {{project_type}}
+- Local currency: {{currency}}
 
 Client's questionnaire answers:
 {{questionnaire_answers}}
 
 Your task: Review these answers and identify gaps, ambiguities, or technically insufficient responses.
 
-Focus on fields that are truly critical for designing this specific project type. For a hydroponic project, water EC/TDS is mandatory. For a greenhouse project, GPS/climate data is critical.
+Focus on fields that are truly critical for designing this specific project type and location:
+- For hydroponic projects: water EC/TDS is mandatory
+- For greenhouse projects: GPS/climate data is critical
+- For projects in arid regions: water availability and quality are paramount
+- For export-focused projects: logistics, cold chain, and certification details are needed
 
 Return a JSON array of flags:
 [
   {
     "field_name": "exact field or question name",
-    "reason": "clear, specific explanation of why this is needed for THIS project",
+    "reason": "clear, specific explanation of why this is needed for THIS project in {{country}}",
     "suggested_question": "polite, specific follow-up question to the client",
     "severity": "required" | "recommended"
   }
@@ -65,15 +71,15 @@ Return only valid JSON. If there are no gaps, return [].
   followup_questions: `
 You are drafting a follow-up questionnaire on behalf of agricultural consultant {{consultant_name}}.
 
-The client has submitted their initial questionnaire but some critical information is missing.
+The client has submitted their initial questionnaire for a {{project_type}} project in {{region}}, {{country}}.
+Some critical information is missing for us to proceed with the feasibility analysis.
+
 Your tone should be: professional, helpful, specific. Not bureaucratic.
 
 Accepted flags (what we need from the client):
 {{accepted_flags}}
 
-Project context: {{project_type}} in {{region}}, {{country}}
-
-Draft a brief, friendly covering message (2-3 sentences) explaining why we need this additional information, followed by the specific questions. Do not number the covering message — it should read as a natural email paragraph.
+Draft a brief, friendly covering message (2-3 sentences) explaining why we need this additional information.
 
 Format:
 {
@@ -88,7 +94,7 @@ Return only valid JSON.
 
   // ── Stage 4: technical analysis ────────────────────────────────────
   technical_analysis: `
-You are a senior greenhouse engineer at a leading agricultural consultancy in the Middle East.
+You are a senior greenhouse and controlled-environment agriculture engineer.
 
 Project data:
 - Location: {{region}}, {{country}}
@@ -100,20 +106,23 @@ Project data:
 - Water source: {{water_source}}
 - Water quality (EC/TDS): {{water_quality}}
 - Power source: {{power_source}}
-- Budget range: {{budget_range}}
+- Budget range: {{budget_range}} {{currency}}
+- Local currency: {{currency}}
+- Target market: {{target_markets}}
 
 Full questionnaire answers:
 {{questionnaire_answers}}
 
-Provide a structured technical feasibility analysis. Cover:
-1. Recommended greenhouse type and why (given climate and crop selection)
-2. Cooling strategy (pad & fan, fogging, retractable roof — based on climate)
-3. Growing technology (hydroponic growbag, NFT, soil — based on crop and water quality)
-4. Infrastructure requirements (irrigation, fertigation, packhouse, staff accommodation)
-5. Any technical red flags or prerequisites that must be resolved before proceeding
+Provide a structured technical feasibility analysis SPECIFIC to {{country}} and its climate, regulations, and market conditions. Cover:
+1. Recommended greenhouse type and why — factoring in {{country}}'s climate profile
+2. Cooling/heating strategy appropriate for {{region}}'s weather patterns
+3. Growing technology recommendation (hydroponic vs soil vs NFT) based on water quality and crop selection
+4. Infrastructure requirements: irrigation, fertigation, packhouse, cold storage if needed
+5. Local supply chain considerations for inputs (substrates, nutrients, seedlings) in {{country}}
+6. Technical red flags or prerequisites specific to this location
 
-Write in professional English. Be specific — reference the actual project parameters. Do not use generic statements.
-Max 600 words.
+Write in professional English. Reference actual project parameters. Avoid generic statements.
+Max 700 words.
 `,
 
   // ── Stage 4: climate analysis (uses Open-Meteo data) ───────────────
@@ -127,11 +136,11 @@ Climate data (monthly averages):
 {{climate_data}}
 
 Analyse:
-1. Optimal growing windows (which months are ideal for each crop)
+1. Optimal growing windows (which months are ideal for each crop given {{country}}'s climate)
 2. Stress periods (heat, humidity, cold — and their impact on the target crops)
-3. Cooling/heating requirements and recommended strategy
+3. Cooling/heating requirements and recommended strategy for {{region}}
 4. Whether year-round cultivation is feasible and under what conditions
-5. Specific risks unique to this location and how to mitigate them
+5. Specific risks unique to {{region}}, {{country}} and how to mitigate them
 
 Be specific to the crops and location. Do not give generic greenhouse advice.
 Max 400 words.
@@ -141,23 +150,28 @@ Max 400 words.
   financial_projection: `
 You are an agricultural financial analyst. Generate a feasibility-level financial model.
 
+IMPORTANT: All monetary values must be in {{currency}}. Do NOT use any other currency.
+
 Project inputs:
 - Greenhouse area: {{greenhouse_area_sqm}} sqm
 - Net house area: {{nethouse_area_sqm}} sqm  
 - Target crops: {{crop_types}}
 - Location: {{region}}, {{country}}
 - Project type: {{project_type}}
+- Local currency: {{currency}}
+- Budget range: {{budget_range}} {{currency}}
 - Agro-tourism planned: {{agro_tourism}}
+- Target market: {{target_markets}}
 
-Use these benchmark values (adjust for local market if context suggests otherwise):
-- Beef tomato yield: 35-40 kg/sqm/year, price OMR 0.70-0.90/kg
-- Cherry tomato yield: 28-32 kg/sqm/year, price OMR 1.20-1.50/kg
-- Capsicum yield: 18-22 kg/sqm/year, price OMR 0.60-0.80/kg
-- Growing cost: ~OMR 0.15-0.20/kg average
-- Skilled labour (farm manager/grower): OMR 500-700/month
-- Unskilled farm labour: OMR 150-200/month each
+Use realistic benchmark values for {{country}}'s agricultural market. If you don't have specific data for {{country}}, use conservative regional estimates and note your assumptions. All prices and costs must be denominated in {{currency}}.
 
-Output must be ONLY a valid JSON object matching the exact structure below. Do not include any text before, during, or after the JSON.
+Consider local factors for {{country}}:
+- Labour costs typical for the region
+- Input costs (substrates, nutrients, packaging) for local supply chains
+- Realistic farm-gate prices for {{crop_types}} in {{country}}'s market
+- Infrastructure costs appropriate for {{country}}
+
+Output must be ONLY a valid JSON object. All numeric values are in {{currency}}. No text before or after the JSON.
 
 {
   "capex_total": 0,
@@ -178,7 +192,7 @@ Output must be ONLY a valid JSON object matching the exact structure below. Do n
   "ebitda": 0,
   "ebitda_margin": 0,
   "payback_years": 0,
-  "assumptions": ["list key assumptions made"]
+  "assumptions": ["list key assumptions including currency used and country-specific benchmarks applied"]
 }
 `,
 
@@ -189,18 +203,19 @@ You are an agricultural market analyst. Synthesise the research data below into 
 Project: {{project_type}} in {{region}}, {{country}}
 Target crops: {{crop_types}}
 Target markets: {{target_markets}}
+Currency: {{currency}}
 
 Live market research data:
 {{search_results}}
 
 Write a market analysis covering:
-1. Current local market demand and supply gaps
-2. Import dependency and local production opportunity
-3. Price benchmarks and seasonal price variations
-4. Export opportunities (GCC region if relevant)
-5. Key buyers: hypermarkets, restaurants, traders, export
+1. Current demand and supply gaps for {{crop_types}} in {{country}} and the wider region
+2. Import dependency and local production opportunity specific to {{country}}
+3. Price benchmarks in {{currency}} with seasonal variations
+4. Export opportunities relevant to {{country}}'s geographic position
+5. Key buyer segments: hypermarkets, restaurants, traders, exporters in {{country}}/region
 
-Be specific with numbers from the research data where available.
+Use specific data from the research where available. Note source limitations where data is absent.
 Write in professional English suitable for a business report.
 Max 500 words.
 `,
@@ -213,17 +228,24 @@ This section should be compelling — it's what the bank or investor reads first
 Project: {{project_title}}
 Location: {{region}}, {{country}}
 Consultant: {{consultant_name}}, {{company_name}}
+Currency: {{currency}}
 
 Technical analysis summary:
 {{technical_analysis}}
 
-Financial highlights:
-- Total investment: {{capex_total}}
-- Annual revenue: {{total_annual_revenue}}
-- EBITDA: {{ebitda}} ({{ebitda_margin}}%)
+Financial highlights (all in {{currency}}):
+- Total investment: {{capex_total}} {{currency}}
+- Annual revenue: {{total_annual_revenue}} {{currency}}
+- EBITDA: {{ebitda}} {{currency}} ({{ebitda_margin}}%)
 - Payback period: {{payback_years}} years
 
-Write a 3-4 paragraph executive summary. Cover: what the project is, why the location is strategic, what the financial opportunity is, and why it is viable. Use the Zaher Farm report tone as a reference: confident, professional, evidence-based.
+Write a 3-4 paragraph executive summary specific to {{country}} and this project's context. Cover:
+- What the project is and where ({{region}}, {{country}})
+- Why this location and timing is strategic for {{country}}'s agricultural landscape
+- The financial opportunity with figures in {{currency}}
+- Why it is viable given local conditions
+
+Tone: confident, professional, evidence-based. Reference specific local context.
 `,
 
   report_market_analysis: `
@@ -233,6 +255,7 @@ Project: {{project_title}}
 Location: {{region}}, {{country}}
 Target crops: {{crop_types}}
 Target markets: {{target_markets}}
+Currency: {{currency}}
 
 Market research:
 {{market_research}}
@@ -240,31 +263,55 @@ Market research:
 Climate and competitive advantage:
 {{technical_analysis}}
 
-Write a thorough market analysis section (400-600 words) covering: market size, import dependency, local supply gaps, competitive advantage of this location/approach, target customer segments, and export opportunities. 
-CRITICAL: You MUST use Markdown tables to display price benchmarks, supply/demand metrics, and target market segments. Do not just use raw text. Use specific numbers where available.
+Write a thorough market analysis (400-600 words) covering:
+- Market size and demand for {{crop_types}} in {{country}} and region
+- Import dependency and local production gaps specific to {{country}}
+- Competitive advantage of this location in {{region}}
+- Target customer segments in {{country}}'s market
+- Price benchmarks in {{currency}} with seasonal variations
+- Export opportunities given {{country}}'s position
+
+CRITICAL: Use Markdown tables to display price benchmarks, supply/demand metrics, and market segments. Use {{currency}} for all monetary values.
 `,
 
   report_business_model: `
 You are writing the Business Model section of a professional agricultural feasibility report.
 
 Project: {{project_title}}
+Location: {{region}}, {{country}}
+Currency: {{currency}}
 Farm operations:
 {{technical_analysis}}
 
 Agro-tourism planned: {{agro_tourism}}
+Target market: {{target_markets}}
 
-Write the Business Model section (300-400 words) covering: farm operations overview, crop cultivation approach, operation facility, agro-tourism activities (if applicable), and revenue streams. 
-CRITICAL: Include a Markdown table summarizing the primary and secondary revenue streams and their target audiences. Be specific about the proposed infrastructure.
+Write the Business Model section (300-400 words) covering:
+- Farm operations overview specific to {{region}}, {{country}}
+- Crop cultivation approach and technology
+- Distribution channels relevant to {{country}}'s market
+- Agro-tourism activities if applicable
+- Revenue streams with estimates in {{currency}}
+
+CRITICAL: Include a Markdown table summarizing revenue streams and target audiences. All monetary values in {{currency}}.
 `,
 
   report_financial_projection: `
 You are writing the Financial Projection section of a professional agricultural feasibility report.
 
-Financial model:
+Currency: {{currency}}
+Financial model (all values in {{currency}}):
 {{financial_model_json}}
 
-Write a clear, detailed Financial Projection section (400-500 words) that explains: the capital investment breakdown, annual production projections by crop, revenue calculations, operating cost breakdown (growing cost + manpower), EBITDA analysis, and break-even/ROI timeline. Present the numbers clearly and explain the methodology.
-CRITICAL: You MUST use Markdown tables heavily in this section to display the CAPEX breakdown, the crop yields/revenues, and operating/manpower costs. Do not list numbers in plain text.
+Write a detailed Financial Projection section (400-500 words) explaining:
+- Capital investment breakdown in {{currency}}
+- Annual production projections by crop
+- Revenue calculations with farm-gate prices in {{currency}}
+- Operating cost breakdown (growing cost + manpower) in {{currency}}
+- EBITDA analysis and margin explanation
+- Break-even timeline and ROI
+
+CRITICAL: Use Markdown tables heavily. Show CAPEX breakdown, crop yields/revenues, and operating costs. All values in {{currency}}.
 `,
 
   report_risk_mitigation: `
@@ -273,40 +320,43 @@ You are writing the Risk & Mitigation section of a professional agricultural fea
 Project: {{project_title}} in {{region}}, {{country}}
 Technical approach: {{project_type}}, {{crop_types}}
 
-Identify and address the main risks for this specific project type and location. For each risk provide a specific, actionable mitigation strategy. Cover: utility availability, crop production risks (disease, yield), market demand, competition, pricing volatility, and seasonal risks.
+Identify risks SPECIFIC to {{country}} and this project type. For each risk, provide actionable mitigation.
+Cover: utility reliability in {{country}}, crop production risks, market demand volatility, regulatory/compliance risks for {{country}}, seasonal risks for {{region}}'s climate, currency/financial risks.
 
-CRITICAL: You MUST structure this section using a professional Markdown table with three columns: "Risk Category", "Description & Impact", and "Detailed Mitigation Strategy".
+CRITICAL: Structure as a Markdown table with columns: "Risk Category" | "Description & Impact" | "Mitigation Strategy"
 Max 400 words.
 `,
 
   report_conclusion: `
 You are writing the Conclusion section of a professional agricultural feasibility report.
 
-Project: {{project_title}}
-Key financial outcomes: Investment {{capex_total}}, EBITDA {{ebitda_margin}}%, payback {{payback_years}} years.
+Project: {{project_title}} in {{region}}, {{country}}
+Key financial outcomes (in {{currency}}): Investment {{capex_total}}, EBITDA {{ebitda_margin}}%, payback {{payback_years}} years.
 Key strategic points: {{strategic_highlights}}
 
-Write a concise, confident 2-3 paragraph conclusion. Reaffirm the project's viability, its alignment with national food security goals (if relevant), and the path to profitability. End with a call to action for the investor/bank.
+Write a concise, confident 2-3 paragraph conclusion. Reaffirm the project's viability in {{country}}'s agricultural context, its alignment with {{country}}'s food security and agricultural goals, and the path to profitability. End with a clear call to action.
 `,
-
-}
+};
 
 // ── Template variable injection ───────────────────────────────────────
-export function buildPrompt(task: AITask, variables: Record<string, string>): string {
-  let template = PROMPTS[task]
-  if (!template) throw new Error(`Unknown AI task: ${task}`)
+export function buildPrompt(
+  task: AITask,
+  variables: Record<string, string>,
+): string {
+  let template = PROMPTS[task];
+  if (!template) throw new Error(`Unknown AI task: ${task}`);
 
   for (const [key, value] of Object.entries(variables)) {
-    template = template.replaceAll(`{{${key}}}`, value || 'Not provided')
+    template = template.replaceAll(`{{${key}}}`, value || "Not specified");
   }
 
   // Warn about any unfilled variables in development
-  if (process.env.NODE_ENV === 'development') {
-    const unfilled = template.match(/\{\{[^}]+\}\}/g)
+  if (process.env.NODE_ENV === "development") {
+    const unfilled = template.match(/\{\{[^}]+\}\}/g);
     if (unfilled) {
-      console.warn(`[AI] Unfilled variables in ${task}:`, unfilled)
+      console.warn(`[AI] Unfilled variables in ${task}:`, unfilled);
     }
   }
 
-  return template.trim()
+  return template.trim();
 }
