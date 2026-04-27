@@ -14,7 +14,7 @@ const PROVIDER_CONFIG: Record<
   anthropic: {
     baseURL: "https://api.anthropic.com/v1",
     apiKeyEnv: "ANTHROPIC_API_KEY",
-    defaultModel: "claude-haiku-4-5",
+    defaultModel: "claude-3-5-haiku-latest",
   },
   openai: {
     baseURL: "https://api.openai.com/v1",
@@ -24,7 +24,7 @@ const PROVIDER_CONFIG: Record<
   google: {
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKeyEnv: "GOOGLE_AI_API_KEY",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-2.0-flash",
   },
 };
 
@@ -37,12 +37,12 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   climate_analysis: "minimax/minimax-m2.5:free",
   technical_analysis: "minimax/minimax-m2.5:free",
   market_research: "minimax/minimax-m2.5:free",
-  report_executive_summary: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_market_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_business_model: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_conclusion: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_executive_summary: "google/gemini-2.0-flash-001",
+  report_market_analysis: "google/gemini-2.0-flash-001",
+  report_business_model: "google/gemini-2.0-flash-001",
+  report_financial_projection: "google/gemini-2.0-flash-001",
+  report_risk_mitigation: "google/gemini-2.0-flash-001",
+  report_conclusion: "google/gemini-2.0-flash-001",
 };
 
 // ── Token budget per task (keeps prompts lean) ────────────────────────
@@ -50,7 +50,7 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
 const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
   clarification_check: 800,
   followup_questions: 600,
-  financial_projection: 1000,
+  financial_projection: 2000,
   call_brief_summary: 500,
   technical_analysis: 800,
   climate_analysis: 600,

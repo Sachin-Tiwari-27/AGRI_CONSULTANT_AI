@@ -111,7 +111,10 @@ export function ProjectWorkspace({
       | "followUpSend"
       | "reportGeneration"
       | "analysisFetch",
-      { state: "idle" | "loading" | "success" | "error"; message: string | null }
+      {
+        state: "idle" | "loading" | "success" | "error";
+        message: string | null;
+      }
     >
   >({
     sendQuestionnaire: { state: "idle", message: null },
@@ -445,7 +448,11 @@ export function ProjectWorkspace({
     className = "mt-2",
   ) {
     const status = actionStatus[action];
-    if (!status.message || status.state === "loading" || status.state === "idle") {
+    if (
+      !status.message ||
+      status.state === "loading" ||
+      status.state === "idle"
+    ) {
       return null;
     }
     return (
@@ -507,7 +514,8 @@ export function ProjectWorkspace({
         {Object.entries(actionStatus)
           .filter(
             ([, value]) =>
-              value.message && (value.state === "success" || value.state === "error"),
+              value.message &&
+              (value.state === "success" || value.state === "error"),
           )
           .slice(-1)
           .map(([key, value]) => (
@@ -877,13 +885,18 @@ export function ProjectWorkspace({
               Questionnaire Operations
             </h2>
             <p className="text-sm text-slate-500">
-              Track submissions, run clarification checks, and request follow-up details.
+              Track submissions, run clarification checks, and request follow-up
+              details.
             </p>
           </div>
           {/* Quick Actions Header for Questionnaire */}
           <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-2">
             <div className="flex items-center gap-3">
-              <Badge variant={project.status === "questionnaire_sent" ? "amber" : "green"}>
+              <Badge
+                variant={
+                  project.status === "questionnaire_sent" ? "amber" : "green"
+                }
+              >
                 Status: {project.status.replace(/_/g, " ")}
               </Badge>
               {latestSubmission && (
@@ -1077,7 +1090,9 @@ export function ProjectWorkspace({
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => dismissFlag(flag.id)}
-                                  loading={loading === `flag_dismiss_${flag.id}`}
+                                  loading={
+                                    loading === `flag_dismiss_${flag.id}`
+                                  }
                                 >
                                   Dismiss
                                 </Button>
@@ -1148,9 +1163,12 @@ export function ProjectWorkspace({
       {activeTab === "analysis" && (
         <div className="space-y-5">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Analysis Workspace</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Analysis Workspace
+            </h2>
             <p className="text-sm text-slate-500">
-              Review financial insights, live context data, and AI-generated feasibility outputs.
+              Review financial insights, live context data, and AI-generated
+              feasibility outputs.
             </p>
           </div>
           {!latestSubmission ? (
@@ -1236,10 +1254,14 @@ export function ProjectWorkspace({
                           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                           <YAxis
                             tick={{ fontSize: 11 }}
-                            tickFormatter={(v: any) => `${(Number(v ?? 0) / 1000).toFixed(0)}K`}
+                            tickFormatter={(v: any) =>
+                              `${(Number(v ?? 0) / 1000).toFixed(0)}K`
+                            }
                           />
                           <Tooltip
-                            formatter={(v: any) => formatCurrency(Number(v ?? 0))}
+                            formatter={(v: any) =>
+                              formatCurrency(Number(v ?? 0))
+                            }
                           />
                           <Bar
                             dataKey="revenue"
@@ -1278,7 +1300,9 @@ export function ProjectWorkspace({
                             ))}
                           </Pie>
                           <Tooltip
-                            formatter={(v: any) => formatCurrency(Number(v ?? 0))}
+                            formatter={(v: any) =>
+                              formatCurrency(Number(v ?? 0))
+                            }
                           />
                           <Legend />
                         </PieChart>
@@ -1419,19 +1443,21 @@ export function ProjectWorkspace({
                       Explore market info and climate data without generating
                     </p>
                   </div>
-                  {!analysisData && (!report || !report.sections?.context_market_data) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={fetchAnalysisData}
-                      loading={loading === "analysisData"}
-                      disabled={loading === "analysisData"}
-                    >
-                      Fetch Market & Climate Data
-                    </Button>
-                  )}
+                  {!analysisData &&
+                    (!report || !report.sections?.context_market_data) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={fetchAnalysisData}
+                        loading={loading === "analysisData"}
+                        disabled={loading === "analysisData"}
+                      >
+                        Fetch Market & Climate Data
+                      </Button>
+                    )}
                 </CardHeader>
-                {(analysisData || (report && report.sections?.context_market_data)) && (
+                {(analysisData ||
+                  (report && report.sections?.context_market_data)) && (
                   <CardBody className="max-h-[600px] overflow-y-auto space-y-8 text-sm text-slate-700 bg-slate-50/50 p-6">
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
@@ -1480,9 +1506,12 @@ export function ProjectWorkspace({
       {activeTab === "report" && (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Report Builder</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Report Builder
+            </h2>
             <p className="text-sm text-slate-500">
-              Generate and refine sections into a client-ready feasibility report.
+              Generate and refine sections into a client-ready feasibility
+              report.
             </p>
           </div>
           {!report ? (
@@ -1490,17 +1519,18 @@ export function ProjectWorkspace({
               {/* Report Preparation Header */}
               <div className="bg-gradient-to-r from-green-700 to-green-600 rounded-2xl p-6 text-white shadow-lg flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold">Feasibility Report Status</h2>
+                  <h2 className="text-xl font-bold">
+                    Feasibility Report Status
+                  </h2>
                   <p className="text-green-50/80 text-sm mt-1">
-                    {latestSubmission 
+                    {latestSubmission
                       ? "Questionnaire data received. AI draft is ready to be generated."
-                      : "Awaiting questionnaire submission before report generation."
-                    }
+                      : "Awaiting questionnaire submission before report generation."}
                   </p>
                 </div>
                 {latestSubmission && (
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     className="bg-white text-green-700 hover:bg-green-50 border-none shadow-sm"
                     onClick={() => generateReport()}
                     loading={loading === "report"}
@@ -1514,33 +1544,68 @@ export function ProjectWorkspace({
               {/* Report Skeleton / Sections List */}
               <div className="grid gap-4">
                 {[
-                  { key: "executive_summary", title: "Executive Summary", desc: "High-level project overview and strategic rationale." },
-                  { key: "market_analysis", title: "Market & Economic Analysis", desc: "Local demand, pricing strategy, and competitive landscape." },
-                  { key: "technical_analysis", title: "Technical Feasibility", desc: "Climate compatibility, technology selection, and water/power analysis." },
-                  { key: "financial_projection", title: "Financial Projections", desc: "CAPEX, Operating costs, Revenue forecasts, and ROI/Payback." },
-                  { key: "risk_mitigation", title: "Risk Assessment", desc: "Climate, operational, and commercial risks with mitigation plans." },
-                  { key: "conclusion", title: "Conclusion & Recommendations", desc: "Final feasibility verdict and suggested next steps." },
+                  {
+                    key: "executive_summary",
+                    title: "Executive Summary",
+                    desc: "High-level project overview and strategic rationale.",
+                  },
+                  {
+                    key: "market_analysis",
+                    title: "Market & Economic Analysis",
+                    desc: "Local demand, pricing strategy, and competitive landscape.",
+                  },
+                  {
+                    key: "technical_analysis",
+                    title: "Technical Feasibility",
+                    desc: "Climate compatibility, technology selection, and water/power analysis.",
+                  },
+                  {
+                    key: "financial_projection",
+                    title: "Financial Projections",
+                    desc: "CAPEX, Operating costs, Revenue forecasts, and ROI/Payback.",
+                  },
+                  {
+                    key: "risk_mitigation",
+                    title: "Risk Assessment",
+                    desc: "Climate, operational, and commercial risks with mitigation plans.",
+                  },
+                  {
+                    key: "conclusion",
+                    title: "Conclusion & Recommendations",
+                    desc: "Final feasibility verdict and suggested next steps.",
+                  },
                 ].map((sec) => (
-                  <Card key={sec.key} className="group hover:border-green-200 transition-colors">
+                  <Card
+                    key={sec.key}
+                    className="group hover:border-green-200 transition-colors"
+                  >
                     <CardBody className="flex items-center justify-between p-4">
                       <div className="flex gap-4 items-center">
                         <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-green-50 group-hover:text-green-600 transition-colors">
                           <FileText className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="text-sm font-semibold text-slate-900">{sec.title}</h4>
-                          <p className="text-xs text-slate-500 mt-0.5">{sec.desc}</p>
+                          <h4 className="text-sm font-semibold text-slate-900">
+                            {sec.title}
+                          </h4>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {sec.desc}
+                          </p>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => generateReport(sec.key as ReportSectionKey)}
+                        onClick={() =>
+                          generateReport(sec.key as ReportSectionKey)
+                        }
                         disabled={!latestSubmission}
                         loading={loading === `report_${sec.key}`}
                       >
-                        {latestSubmission ? "Generate Section" : "Awaiting Data"}
+                        {latestSubmission
+                          ? "Generate Section"
+                          : "Awaiting Data"}
                       </Button>
                     </CardBody>
                   </Card>
@@ -1550,11 +1615,13 @@ export function ProjectWorkspace({
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-bold text-slate-900">Report Draft</h2>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Report Draft
+                </h2>
                 <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => generateReport()}
                     loading={loading === "report"}
                     disabled={loading === "report"}
