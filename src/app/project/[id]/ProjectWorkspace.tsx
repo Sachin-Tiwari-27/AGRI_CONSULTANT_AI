@@ -1701,8 +1701,11 @@ function FlagCard({
                 </Badge>
               )}
               {flag.status === "pending" && (
-                <span className="text-xs text-slate-400 italic">
-                  Consultant-added
+                <span className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
+                  flag.is_manual ? "text-slate-400" : "text-purple-500"
+                }`}>
+                  <span className={`w-1 h-1 rounded-full ${flag.is_manual ? "bg-slate-300" : "bg-purple-400"}`} />
+                  {flag.is_manual ? "Consultant-added" : "AI-raised Gap"}
                 </span>
               )}
             </div>

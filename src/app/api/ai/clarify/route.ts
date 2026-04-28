@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
       suggested_question: f.suggested_question,
       severity: f.severity,
       status: "pending",
+      is_manual: false,
     }));
     const { data: insertedFlags, error } = await supabase
       .from("ai_flags")
