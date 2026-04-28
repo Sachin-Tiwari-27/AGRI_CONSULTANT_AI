@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/Sidebar'
 import { StatusBadge } from '@/components/ui/Card'
@@ -12,8 +12,10 @@ export default async function ProjectPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const [{ data: { user } }, supabase] = await Promise.all([
+    getUser(),
+    createClient()
+  ])
   if (!user) redirect('/login')
 
   const { data: project } = await supabase

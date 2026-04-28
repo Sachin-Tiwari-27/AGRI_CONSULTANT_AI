@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { TopBar } from '@/components/layout/Sidebar'
 import { StatCard } from '@/components/ui/Card'
 import { ProjectCard } from '@/components/project/ProjectCard'
@@ -6,18 +6,22 @@ import { NewProjectButton } from './NewProjectButton'
 import type { Project } from '@/types'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const [{ data: { user } }, supabase] = await Promise.all([
+    getUser(),
+    createClient()
+  ])
 
-  const { data: profile } = await supabase
-    .from('profiles').select('full_name, company_name').eq('id', user!.id).single()
+  const [profileRes, projectsRes] = await Promise.all([
+    supabase.from('profiles').select('full_name, company_name').eq('id', user!.id).single(),
+    supabase.from('projects')
+      .select('*')
+      .eq('consultant_id', user!.id)
+      .order('updated_at', { ascending: false })
+      .limit(20)
+  ])
 
-  const { data: projects } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('consultant_id', user!.id)
-    .order('updated_at', { ascending: false })
-    .limit(20)
+  const profile = profileRes.data
+  const projects = projectsRes.data
 
   const all = (projects || []) as Project[]
   const active = all.filter(p => !['completed'].includes(p.status))

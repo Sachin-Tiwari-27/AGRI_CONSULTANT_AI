@@ -21,14 +21,19 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-
   const { pathname } = request.nextUrl
 
   // Protect dashboard and project routes
   const protectedPaths = ['/dashboard', '/project']
   const isProtected = protectedPaths.some(p => pathname.startsWith(p))
   const isReportPage = pathname.endsWith('/report')
+  const isAuthPage = pathname === '/login' || pathname === '/register'
+
+  if (!isProtected && !isAuthPage) {
+    return supabaseResponse
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (isProtected && !isReportPage && !user) {
     const url = request.nextUrl.clone()
@@ -38,7 +43,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Redirect logged-in users away from auth pages
-  if ((pathname === '/login' || pathname === '/register') && user) {
+  if (isAuthPage && user) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

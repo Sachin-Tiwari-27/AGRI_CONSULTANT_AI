@@ -1,12 +1,14 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getUser } from '@/lib/supabase/server'
 import { TopBar } from '@/components/layout/Sidebar'
 import { ProjectCard } from '@/components/project/ProjectCard'
 import { NewProjectButton } from '../NewProjectButton'
 import type { Project } from '@/types'
 
 export default async function ProjectsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const [{ data: { user } }, supabase] = await Promise.all([
+    getUser(),
+    createClient()
+  ])
 
   const { data: projects } = await supabase
     .from('projects')
