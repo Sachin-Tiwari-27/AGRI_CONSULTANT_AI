@@ -35,7 +35,7 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   financial_projection: "minimax/minimax-m2.5:free",
   call_brief_summary: "minimax/minimax-m2.5:free",
   climate_analysis: "minimax/minimax-m2.5:free",
-  technical_analysis: "minimax/minimax-m2.5:free",
+  technical_analysis: "google/gemini-2.0-flash-001",
   market_research: "minimax/minimax-m2.5:free",
   report_executive_summary: "google/gemini-2.0-flash-001",
   report_market_analysis: "google/gemini-2.0-flash-001",
@@ -45,28 +45,26 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   report_conclusion: "google/gemini-2.0-flash-001",
 };
 
-// ── Token budget per task (keeps prompts lean) ────────────────────────
-// These are OUTPUT token limits. Smaller = faster + less likely to hit rate limits.
+// ── Token budget per task ─────────────────────────────────────────────
+// Raised significantly — incomplete sections were caused by low token limits.
 const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
-  clarification_check: 800,
-  followup_questions: 600,
-  financial_projection: 2000,
-  call_brief_summary: 500,
-  technical_analysis: 800,
-  climate_analysis: 600,
-  market_research: 700,
-  report_executive_summary: 12000,
-  report_market_analysis: 12000,
-  report_business_model: 12000,
-  report_financial_projection: 12000,
-  report_risk_mitigation: 12000,
-  report_conclusion: 12000,
+  clarification_check: 1200,
+  followup_questions: 800,
+  financial_projection: 3000,
+  call_brief_summary: 600,
+  technical_analysis: 2000,
+  climate_analysis: 800,
+  market_research: 1000,
+  // Report sections — these need to be long and complete
+  report_executive_summary: 16000,
+  report_market_analysis: 16000,
+  report_business_model: 16000,
+  report_financial_projection: 16000,
+  report_risk_mitigation: 16000,
+  report_conclusion: 16000,
 };
 
 // ── Context trimming helpers ──────────────────────────────────────────
-// Questionnaire answers injected into prompts can be enormous.
-// We trim them to the most relevant fields per task to reduce token usage.
-
 const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
   technical_analysis: [
     "q4",
@@ -113,11 +111,6 @@ const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
   report_conclusion: ["q14", "q17", "q18", "q20", "q22"],
 };
 
-/**
- * Trim questionnaire answers to only relevant fields for a given task.
- * Falls back to all answers if no filter is defined.
- * Also caps the total JSON size to prevent prompt bloat.
- */
 export function trimAnswersForTask(
   answers: Record<string, unknown>,
   task: AITask,
@@ -132,7 +125,6 @@ export function trimAnswersForTask(
         relevantKeys.some((rk) => k.toLowerCase().includes(rk.toLowerCase())),
       ),
     );
-    // If filter was too aggressive and returned nothing, fall back to all
     if (Object.keys(filtered).length === 0) filtered = answers;
   } else {
     filtered = answers;
@@ -140,28 +132,17 @@ export function trimAnswersForTask(
 
   const json = JSON.stringify(filtered, null, 2);
   if (json.length <= maxChars) return json;
-
-  // Truncate gracefully — cut to char limit and close the JSON
-  return json.slice(0, maxChars) + "\n  ... (truncated for brevity)\n}";
+  return json.slice(0, maxChars) + "\n  ... (truncated)\n}";
 }
 
-/**
- * Trim a long freeform text (market research, climate data) to a safe length.
- */
 export function trimContext(text: string, maxChars = 2000): string {
   if (!text || text.length <= maxChars) return text;
   return text.slice(0, maxChars) + "\n... [truncated]";
 }
 
-// ── Rate limiter — simple in-process queue ────────────────────────────
-// Ensures we never fire more than N requests per second to the AI API,
-// which is the primary cause of 429 errors on free/shared keys.
-
+// ── Rate limiter ──────────────────────────────────────────────────────
 const REQUEST_QUEUE: Array<() => Promise<void>> = [];
 let isProcessingQueue = false;
-
-// Minimum milliseconds between AI API calls
-// Increase this if you're still hitting 429s (try 3000 for very tight rate limits)
 const MIN_DELAY_MS = Number(process.env.AI_REQUEST_DELAY_MS ?? 1500);
 
 async function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
@@ -185,7 +166,6 @@ async function processQueue() {
     if (next) {
       await next();
       if (REQUEST_QUEUE.length > 0) {
-        // Wait between requests to respect rate limits
         await new Promise((r) => setTimeout(r, MIN_DELAY_MS));
       }
     }
@@ -193,7 +173,7 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
-// ── Main AI call function ─────────────────────────────────────────────
+// ── Main AI call ──────────────────────────────────────────────────────
 export async function callAI(request: AIRequest): Promise<AIResponse> {
   return enqueueRequest(() => _callAI(request));
 }
@@ -205,10 +185,7 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
   if (!config) throw new Error(`Unknown AI provider: ${providerName}`);
 
   const apiKey = process.env[config.apiKeyEnv];
-  if (!apiKey)
-    throw new Error(
-      `Missing API key for provider: ${providerName} — check your .env.local`,
-    );
+  if (!apiKey) throw new Error(`Missing API key for provider: ${providerName}`);
 
   const model = TASK_MODEL_OVERRIDES[request.task] || config.defaultModel;
   const prompt = buildPrompt(request.task, request.variables);
@@ -226,23 +203,22 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     headers["X-Title"] = "AgriAI Platform";
   }
 
+  console.log(
+    `[AI] Task: ${request.task} | Provider: ${providerName} | Model: ${model} | MaxTokens: ${maxTokens}`,
+  );
+
   const body = JSON.stringify({
     model,
     max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }],
   });
 
-  // Retry with exponential backoff
   const maxRetries = 4;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {
-      // Exponential backoff: 2s, 4s, 8s
       const waitMs = Math.pow(2, attempt) * 1000;
-      console.log(
-        `[AI] Provider: ${providerName} | Model: ${model} | Task: ${request.task}`,
-      );
       console.warn(
         `[AI] Retry ${attempt}/${maxRetries - 1} for task: ${request.task} — waiting ${waitMs}ms`,
       );
@@ -256,24 +232,18 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     });
 
     if (response.status === 429) {
-      // Try to respect Retry-After header if present
       const retryAfter = response.headers.get("Retry-After");
       const waitMs = retryAfter
         ? parseInt(retryAfter) * 1000
         : Math.pow(2, attempt + 1) * 1000;
-      console.log(
-        `[AI] Provider: ${providerName} | Model: ${model} | Task: ${request.task}`,
-      );
-      console.warn(`[AI] 429 Rate limited — waiting ${waitMs}ms before retry`);
+      console.warn(`[AI] 429 Rate limited — waiting ${waitMs}ms`);
       await new Promise((r) => setTimeout(r, waitMs));
       lastError = new Error(`Rate limited (429) on attempt ${attempt + 1}`);
       continue;
     }
 
     if (response.status === 503 || response.status === 502) {
-      lastError = new Error(
-        `Model unavailable (${response.status}) — may be overloaded`,
-      );
+      lastError = new Error(`Model unavailable (${response.status})`);
       continue;
     }
 
@@ -290,6 +260,13 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
 
     const content = data.choices?.[0]?.message?.content || "";
     const tokensUsed = data.usage?.total_tokens || 0;
+    const finishReason = data.choices?.[0]?.finish_reason;
+
+    if (finishReason === "length") {
+      console.warn(
+        `[AI] Task ${request.task} hit token limit (${maxTokens}). Content may be truncated.`,
+      );
+    }
 
     if (!content) {
       lastError = new Error("AI returned empty content");
@@ -324,7 +301,7 @@ export async function callAIJSON<T = unknown>(request: AIRequest): Promise<T> {
 
   if (process.env.NODE_ENV === "development") {
     console.log(`[AI-JSON] Task: ${request.task} | Model: ${response.model}`);
-    console.log(`[AI-JSON] Raw (first 200): ${content.substring(0, 200)}`);
+    console.log(`[AI-JSON] Raw (first 300): ${content.substring(0, 300)}`);
   }
 
   const stripped = content
