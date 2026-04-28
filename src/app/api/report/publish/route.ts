@@ -17,10 +17,10 @@ export async function POST(req: NextRequest) {
 
   const { projectId } = await req.json();
 
-  // 1. Fetch project and consultant details
+  // 1. Fetch project
   const { data: project, error: projectError } = await supabase
     .from("projects")
-    .select("*, profiles!projects_consultant_id_fkey(full_name)")
+    .select("*, profiles!projects_consultant_id_fkey(full_name, company_name)")
     .eq("id", projectId)
     .single();
 
@@ -41,65 +41,94 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });
   }
 
-  // 2. Generate and upload PDF snapshot
-  const pdfBuffer = await generateReportPdfBuffer(
-    reportData as Report,
-    project.title,
-  );
-  const pdfPath = `${projectId}/${Date.now()}-report.pdf`;
-
-  const { error: pdfUploadError } = await serviceSupabase.storage
-    .from("reports")
-    .upload(pdfPath, pdfBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-
-  if (pdfUploadError) {
-    return NextResponse.json(
-      { error: "Failed to upload PDF", details: pdfUploadError.message },
-      { status: 500 },
+  // 2. Generate and upload PDF
+  let pdfPath: string | null = null;
+  try {
+    const pdfBuffer = await generateReportPdfBuffer(
+      reportData as Report,
+      project.title,
     );
+    pdfPath = `${projectId}/${Date.now()}-report.pdf`;
+
+    const { error: pdfUploadError } = await serviceSupabase.storage
+      .from("reports")
+      .upload(pdfPath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+
+    if (pdfUploadError) {
+      console.error("[Publish] PDF upload failed:", pdfUploadError);
+      // Don't block publish on PDF failure — just note it
+      pdfPath = null;
+    }
+  } catch (pdfErr) {
+    console.error("[Publish] PDF generation failed:", pdfErr);
+    pdfPath = null;
   }
 
-  // 3. Update statuses
+  // 3. Update report status — this must succeed
   const { error: reportUpdateError } = await supabase
     .from("reports")
-    .update({ status: "published", pdf_url: pdfPath })
+    .update({
+      status: "published",
+      ...(pdfPath ? { pdf_url: pdfPath } : {}),
+    })
     .eq("project_id", projectId);
 
   if (reportUpdateError) {
     return NextResponse.json(
-      { error: "Failed to update report status" },
+      {
+        error: "Failed to update report status",
+        details: reportUpdateError.message,
+      },
       { status: 500 },
     );
   }
 
+  // 4. Update project status
   await supabase
     .from("projects")
     .update({ status: "report_published" })
     .eq("id", projectId);
 
-  // 4. Send email to client
+  // 5. Send email — non-blocking, log failures
+  const warnings: string[] = [];
+
+  if (!pdfPath) {
+    warnings.push(
+      "PDF generation failed — report published without PDF attachment.",
+    );
+  }
+
   try {
-    const consultantProfile = project.profiles as { full_name?: string } | null;
-    const consultantName = consultantProfile?.full_name || "Your Consultant";
+    const consultantProfile = project.profiles as {
+      full_name?: string;
+      company_name?: string;
+    } | null;
+    const consultantName =
+      consultantProfile?.full_name || user.email || "Your Consultant";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
     await sendReportReady({
       clientEmail: project.client_email,
       clientName: project.client_name,
       consultantName,
       projectTitle: project.title,
       projectId,
-      previewUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/project/${projectId}/report`,
+      previewUrl: `${appUrl}/project/${projectId}/report`,
     });
   } catch (emailError) {
-    console.error("[Publish] Failed to send report ready email:", emailError);
-    // We don't fail the whole request because the DB status is already updated
-    return NextResponse.json({
-      success: true,
-      warning: "Report published but email failed to send. Check Resend logs.",
-    });
+    console.error("[Publish] Email failed:", emailError);
+    const msg =
+      emailError instanceof Error ? emailError.message : "Unknown email error";
+    warnings.push(
+      `Report published but client email failed to send: ${msg}. Check RESEND_API_KEY and EMAIL_FROM in your environment variables.`,
+    );
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  });
 }

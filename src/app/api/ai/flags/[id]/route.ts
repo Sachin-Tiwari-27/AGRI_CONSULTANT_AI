@@ -4,15 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 type Params = { params: Promise<{ id: string }> }
 
 const VALID_STATUSES = ['pending', 'accepted', 'dismissed'] as const
-type FlagWithProjectRelation = {
-  projects?: { consultant_id?: string } | Array<{ consultant_id?: string }>
-}
-
-function getConsultantIdFromJoin(flag: FlagWithProjectRelation): string | undefined {
-  const relation = flag.projects
-  if (Array.isArray(relation)) return relation[0]?.consultant_id
-  return relation?.consultant_id
-}
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params
@@ -24,19 +15,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { status } = await req.json()
-  if (!VALID_STATUSES.includes(status)) {
+  if (!VALID_STATUSES.includes(status as any)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
+  // Verify ownership via join
   const { data: existingFlag } = await supabase
     .from('ai_flags')
-    .select('id, projects!inner(consultant_id)')
+    .select('id, project_id, projects!inner(consultant_id)')
     .eq('id', id)
     .single()
 
   if (!existingFlag) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const consultantId = getConsultantIdFromJoin(existingFlag)
+  const projects = existingFlag.projects as any;
+  const consultantId = Array.isArray(projects) ? projects[0]?.consultant_id : projects?.consultant_id;
+
   if (consultantId !== user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -70,7 +64,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   if (!existingFlag) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const consultantId = getConsultantIdFromJoin(existingFlag)
+  const projects = existingFlag.projects as any;
+  const consultantId = Array.isArray(projects) ? projects[0]?.consultant_id : projects?.consultant_id;
+
   if (consultantId !== user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

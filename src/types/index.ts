@@ -183,6 +183,7 @@ export interface AIFlag {
   suggested_question: string
   severity: 'required' | 'recommended'
   status: 'pending' | 'accepted' | 'dismissed'
+  is_manual?: boolean
 }
 
 // ── Report ───────────────────────────────────────────────────────────
