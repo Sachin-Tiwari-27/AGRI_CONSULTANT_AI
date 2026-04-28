@@ -10,6 +10,42 @@ import { researchMarket, fetchClimateData } from "@/lib/ai/search.service";
 import { parseGPS } from "@/lib/utils";
 import type { ReportSectionKey, FinancialModel } from "@/types";
 
+// Detect currency from project — fallback chain
+function resolveCurrency(project: Record<string, unknown>): string {
+  return (
+    (project.currency as string) ||
+    detectCurrencyFromCountry(project.country as string) ||
+    "USD"
+  );
+}
+
+function detectCurrencyFromCountry(country?: string): string | null {
+  if (!country) return null;
+  const c = country.toLowerCase();
+  if (c.includes("oman")) return "OMR";
+  if (c.includes("uae") || c.includes("emirates")) return "AED";
+  if (c.includes("saudi") || c.includes("ksa")) return "SAR";
+  if (c.includes("qatar")) return "QAR";
+  if (c.includes("kuwait")) return "KWD";
+  if (c.includes("bahrain")) return "BHD";
+  if (c.includes("india")) return "INR";
+  if (c.includes("jordan")) return "JOD";
+  if (c.includes("egypt")) return "EGP";
+  if (c.includes("morocco")) return "MAD";
+  if (c.includes("kenya")) return "KES";
+  if (c.includes("ghana")) return "GHS";
+  if (c.includes("nigeria")) return "NGN";
+  if (c.includes("uk") || c.includes("britain")) return "GBP";
+  if (
+    c.includes("euro") ||
+    ["france", "germany", "spain", "italy", "netherlands"].some((n) =>
+      c.includes(n),
+    )
+  )
+    return "EUR";
+  return "USD";
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -31,6 +67,9 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     );
 
+  // Resolve currency — use project.currency, detect from country, or default USD
+  const currency = resolveCurrency(project as Record<string, unknown>);
+
   // Fetch all submissions for this project
   const { data: submissions } = await supabase
     .from("questionnaire_submissions")
@@ -51,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   const isIncremental = !!(sectionsToGenerate && existingReport);
 
-  // ── Fetch live context data (reuse from existing report if available) ──
+  // ── Fetch live context data ───────────────────────────────────────
   let marketResearch: string =
     existingReport?.sections?.context_market_data?.content || "";
   let climateData: string =
@@ -72,21 +111,21 @@ export async function POST(req: NextRequest) {
       : "GPS coordinates not provided — enter them in the project details to get climate data.";
   }
 
-  // ── Shared base variables (kept small — no huge JSON blobs) ──────────
+  // ── Shared base variables — ALL dynamic, none hardcoded ──────────
   const cropList = (project.crop_types || []).join(", ");
   const baseVars = {
     project_title: project.title,
     region: project.region || "Not specified",
     country: project.country || "Not specified",
+    currency, // ← dynamic per project
     crop_types: cropList,
     project_type: project.project_type || "greenhouse",
-    target_markets: (project.target_market || []).join(", "),
+    target_markets: (project.target_market || []).join(", ") || "Local market",
     consultant_name: user.email || "Consultant",
-    company_name: "Tech Farming International",
+    company_name: "AgriAI Consultancy",
     agro_tourism: project.project_type === "agro_tourism" ? "Yes" : "No",
     gps_coordinates: project.gps_coordinates || "Not provided",
     land_size_sqm: project.land_size_sqm?.toString() || "Not provided",
-    // Greenhouse/nethouse area estimates
     greenhouse_area_sqm: project.land_size_sqm
       ? (project.land_size_sqm * 0.35).toFixed(0)
       : "5000",
@@ -95,7 +134,6 @@ export async function POST(req: NextRequest) {
       : "2000",
     budget_range: project.budget_range || "Not specified",
     experience_level: project.experience_level || "Not specified",
-    // Pull these from answers directly rather than re-serialising everything
     water_source: String(
       allAnswers["q6"] ?? allAnswers["water_source"] ?? "Not specified",
     ),
@@ -107,21 +145,21 @@ export async function POST(req: NextRequest) {
     ),
   };
 
-  // ── Technical analysis (reuse or generate once) ──────────────────────
+  // ── Technical analysis ────────────────────────────────────────────
   let technicalAnalysis: string =
     existingReport?.sections?.technical_analysis?.content || "";
 
   if (!isIncremental || !technicalAnalysis) {
-    // Trim answers to only the fields relevant for technical analysis
     const trimmedAnswers = trimAnswersForTask(allAnswers, "technical_analysis");
     const techResp = await callAI({
       task: "technical_analysis",
       variables: { ...baseVars, questionnaire_answers: trimmedAnswers },
+      maxTokens: 1500, // increased
     });
     technicalAnalysis = techResp.content;
   }
 
-  // ── Financial model (reuse or generate once) ─────────────────────────
+  // ── Financial model ───────────────────────────────────────────────
   let financialModel: FinancialModel | null =
     (existingReport?.financial_model as FinancialModel) || null;
 
@@ -133,13 +171,14 @@ export async function POST(req: NextRequest) {
     financialModel = await callAIJSON<FinancialModel>({
       task: "financial_projection",
       variables: { ...baseVars, questionnaire_answers: trimmedAnswers },
+      maxTokens: 2500, // increased
     });
   }
 
-  // ── Build per-section variables (trim context aggressively) ──────────
-  const trimmedMarket = trimContext(marketResearch, 1800);
-  const trimmedClimate = trimContext(climateData, 800);
-  const trimmedTechAnalysis = trimContext(technicalAnalysis, 1200);
+  // ── Section variables ─────────────────────────────────────────────
+  const trimmedMarket = trimContext(marketResearch, 2500);
+  const trimmedClimate = trimContext(climateData, 1000);
+  const trimmedTechAnalysis = trimContext(technicalAnalysis, 1800);
 
   const sectionVars = {
     ...baseVars,
@@ -147,16 +186,15 @@ export async function POST(req: NextRequest) {
     market_research: trimmedMarket,
     climate_data: trimmedClimate,
     financial_model_json: JSON.stringify(financialModel, null, 2),
-    capex_total: financialModel?.capex_total?.toString() || "0",
-    total_annual_revenue:
-      financialModel?.total_annual_revenue?.toString() || "0",
-    ebitda: financialModel?.ebitda?.toString() || "0",
+    capex_total: `${currency} ${financialModel?.capex_total?.toLocaleString() || "0"}`,
+    total_annual_revenue: `${currency} ${financialModel?.total_annual_revenue?.toLocaleString() || "0"}`,
+    ebitda: `${currency} ${financialModel?.ebitda?.toLocaleString() || "0"}`,
     ebitda_margin: financialModel?.ebitda_margin?.toString() || "0",
     payback_years: financialModel?.payback_years?.toString() || "0",
-    strategic_highlights: `${cropList} production, year-round capability, ${project.region} location advantage`,
+    strategic_highlights: `${cropList} production, year-round capability in ${project.country}, ${project.region} location advantage`,
   };
 
-  // ── Section generation — sequential with per-section answer trimming ──
+  // ── Section generation ────────────────────────────────────────────
   const sectionKeys: ReportSectionKey[] = sectionsToGenerate || [
     "executive_summary",
     "market_analysis",
@@ -183,16 +221,16 @@ export async function POST(req: NextRequest) {
 
     console.log(`[ReportGen] Generating section: ${key}`);
     try {
-      // Each section gets trimmed answers relevant to that section only
       const trimmedAnswers = trimAnswersForTask(
         allAnswers,
         task as import("@/types").AITask,
-        1000,
+        1200,
       );
 
       const resp = await callAI({
         task: task as import("@/types").AITask,
         variables: { ...sectionVars, questionnaire_answers: trimmedAnswers },
+        maxTokens: 16000, // INCREASED — was 12000, pushing to max for complete sections
       });
 
       sections[key] = {
@@ -206,7 +244,7 @@ export async function POST(req: NextRequest) {
       console.error(`[ReportGen] Failed section ${key}:`, err);
       sections[key] = {
         key,
-        content: `> [!] Generation Failed\n\nThis section could not be generated: ${
+        content: `> **[Section Generation Failed]**\n\nThis section could not be generated: ${
           err instanceof Error ? err.message : "Unknown error"
         }.\n\nClick "Regenerate" to retry this section individually.`,
         ai_generated: true,
@@ -216,7 +254,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Always store technical analysis and context data sections
+  // Store technical analysis and context data
   sections["technical_analysis"] = {
     key: "technical_analysis",
     content: technicalAnalysis,
@@ -226,7 +264,7 @@ export async function POST(req: NextRequest) {
   };
   sections["context_market_data"] = {
     key: "context_market_data",
-    content: marketResearch, // store full version here
+    content: marketResearch,
     title: "Live Market Research Context",
     ai_generated: true,
     last_edited_at: new Date().toISOString(),
@@ -241,7 +279,7 @@ export async function POST(req: NextRequest) {
     approved: false,
   };
 
-  // ── Upsert report ─────────────────────────────────────────────────────
+  // ── Upsert report ─────────────────────────────────────────────────
   if (existingReport) {
     await supabase
       .from("reports")
@@ -252,14 +290,20 @@ export async function POST(req: NextRequest) {
       })
       .eq("project_id", projectId);
   } else {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, company_name")
+      .eq("id", user.id)
+      .single();
+
     await supabase.from("reports").insert({
       project_id: projectId,
       sections,
       financial_model: financialModel,
       status: "draft",
       branding: {
-        consultant_name: user.email || "Consultant",
-        company_name: "Tech Farming International",
+        consultant_name: profile?.full_name || user.email || "Consultant",
+        company_name: profile?.company_name || "AgriAI Consultancy",
         primary_color: "#1A5C38",
         secondary_color: "#2E7D52",
       },
