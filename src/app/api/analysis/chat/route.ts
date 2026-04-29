@@ -80,23 +80,48 @@ Always tailor your response to ${project.country}'s agricultural context, local 
     })),
     { role: "user", content: message },
   ];
+  // ── Provider configuration ────────────────────────────────────────────
+  const PROVIDER_CONFIG: Record<
+    AIProvider,
+    { baseURL: string; apiKeyEnv: string; defaultModel: string }
+  > = {
+    openrouter: {
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKeyEnv: "OPENROUTER_API_KEY",
+      defaultModel: "minimax/minimax-m2.5:free",
+    },
+    anthropic: {
+      baseURL: "https://api.anthropic.com/v1",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      defaultModel: "claude-3-5-haiku-latest",
+    },
+    openai: {
+      baseURL: "https://api.openai.com/v1",
+      apiKeyEnv: "OPENAI_API_KEY",
+      defaultModel: "gpt-4o-mini",
+    },
+    google: {
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+      apiKeyEnv: "GOOGLE_AI_API_KEY",
+      defaultModel: "gemini-2.0-flash",
+    },
+  };
+  // Load provider config
+  const providerName =
+    (process.env.AI_PROVIDER as AIProvider | undefined) || "openrouter";
+  const config = PROVIDER_CONFIG[providerName];
+  if (!config) {
+    return NextResponse.json({ error: "Invalid AI_PROVIDER" }, { status: 400 });
+  }
 
-  // Call AI — use OpenRouter with a capable model
-  const providerName = process.env.AI_PROVIDER || "openrouter";
-  const apiKey =
-    providerName === "anthropic"
-      ? process.env.ANTHROPIC_API_KEY
-      : process.env.OPENROUTER_API_KEY;
-
-  const baseURL =
-    providerName === "anthropic"
-      ? "https://api.anthropic.com/v1"
-      : "https://openrouter.ai/api/v1";
-
-  const model =
-    providerName === "anthropic"
-      ? "claude-3-5-haiku-latest"
-      : "minimax/minimax-m2.5:free";
+  const apiKey = process.env[config.apiKeyEnv];
+  if (!apiKey) {
+    console.warn(`[Chat] API key missing for provider: ${providerName}`);
+    return NextResponse.json(
+      { error: "AI provider not configured" },
+      { status: 500 },
+    );
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -108,11 +133,11 @@ Always tailor your response to ${project.country}'s agricultural context, local 
     headers["X-Title"] = "AgriAI Platform";
   }
 
-  const response = await fetch(`${baseURL}/chat/completions`, {
+  const response = await fetch(`${config.baseURL}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({
-      model,
+      model: config.defaultModel,
       max_tokens: 1500,
       messages: [{ role: "system", content: systemPrompt }, ...messages],
     }),
