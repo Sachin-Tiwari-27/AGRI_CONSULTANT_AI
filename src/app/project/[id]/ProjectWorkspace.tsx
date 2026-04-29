@@ -295,6 +295,10 @@ export function ProjectWorkspace({
   }
 
   async function generateReport(specificSection?: ReportSectionKey) {
+    if (!latestSubmission) {
+      toast.error("Please collect questionnaire data before generating a report.");
+      return;
+    }
     const loadingKey = specificSection ? `report_${specificSection}` : "report";
     setLoading(loadingKey);
     try {
@@ -506,8 +510,16 @@ export function ProjectWorkspace({
       label: "Questionnaire",
       badge: pendingFlags.length || undefined,
     },
-    { id: "analysis" as const, label: "Analysis" },
-    { id: "report" as const, label: "Report" },
+    { 
+      id: "analysis" as const, 
+      label: "Analysis",
+      disabled: !latestSubmission && !report 
+    },
+    { 
+      id: "report" as const, 
+      label: "Report",
+      disabled: !latestSubmission && !report
+    },
   ];
 
   const currency =
@@ -574,11 +586,14 @@ export function ProjectWorkspace({
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => !tab.disabled && setActiveTab(tab.id)}
+              disabled={tab.disabled}
               className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors flex items-center gap-2 ${
-                activeTab === tab.id
-                  ? "border-green-700 text-green-800"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
+                tab.disabled 
+                  ? "opacity-40 cursor-not-allowed border-transparent text-slate-400"
+                  : activeTab === tab.id
+                    ? "border-green-700 text-green-800"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
               {tab.label}

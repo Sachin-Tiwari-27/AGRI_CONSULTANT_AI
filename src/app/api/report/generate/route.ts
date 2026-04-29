@@ -81,6 +81,14 @@ export async function POST(req: NextRequest) {
   const allAnswers: Record<string, unknown> =
     submissions?.reduce((acc, s) => ({ ...acc, ...s.answers }), {}) || {};
 
+  // Server-side guard: block generation if no questionnaire data exists
+  if (!submissions || submissions.length === 0 || Object.keys(allAnswers).length === 0) {
+    return NextResponse.json(
+      { error: "No questionnaire submissions found. Please collect questionnaire data before generating a report." },
+      { status: 400 }
+    );
+  }
+
   // Fetch consultant research notes to enrich the report
   const { data: consultantNotes } = await supabase
     .from("consultant_notes")

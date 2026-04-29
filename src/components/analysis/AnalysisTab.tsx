@@ -85,7 +85,7 @@ interface AnalysisData {
 }
 
 interface Props {
-  project: Project;
+  project: Project & { questionnaire_submissions?: any[] };
   report: Report | null;
   currency: string;
   onGenerateReport: () => void;
@@ -447,6 +447,7 @@ export function AnalysisTab({
                   fetchingData={fetchingData}
                   hasData={!!analysisData}
                   notesCount={notes.length}
+                  hasSubmissions={(project.questionnaire_submissions?.length || 0) > 0}
                 />
               </div>
               <div className="lg:col-span-2">
@@ -1707,6 +1708,7 @@ function GenerateReportCard({
   fetchingData,
   hasData,
   notesCount,
+  hasSubmissions,
 }: {
   project: Project;
   onGenerate: () => void;
@@ -1715,8 +1717,9 @@ function GenerateReportCard({
   fetchingData: boolean;
   hasData: boolean;
   notesCount: number;
+  hasSubmissions: boolean;
 }) {
-  const hasQ = true; // parent ensures this
+  const hasQ = hasSubmissions;
   return (
     <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white h-full flex flex-col">
       <div className="flex items-center gap-2.5 mb-4">
@@ -1748,7 +1751,7 @@ function GenerateReportCard({
           },
           {
             label: "Questionnaire submitted",
-            done: true,
+            done: hasSubmissions,
             action: null,
             actionLabel: null,
             loading: false,
@@ -1789,9 +1792,10 @@ function GenerateReportCard({
       <Button
         onClick={onGenerate}
         loading={loading}
+        disabled={!hasSubmissions}
         className="mt-auto bg-emerald-600 hover:bg-emerald-500 border-emerald-500 w-full"
       >
-        <Zap className="w-4 h-4" /> Generate Full Report & Analysis
+        <Zap className="w-4 h-4" /> {hasSubmissions ? "Generate Full Report & Analysis" : "Awaiting Questionnaire Data"}
       </Button>
     </div>
   );
