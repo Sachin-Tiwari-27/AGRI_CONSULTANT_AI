@@ -24,7 +24,7 @@ const PROVIDER_CONFIG: Record<
   google: {
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKeyEnv: "GOOGLE_AI_API_KEY",
-    defaultModel: "gemini-2.0-flash",
+    defaultModel: "gemini-2.0-pro-exp-02-05",
   },
 };
 
@@ -35,14 +35,14 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   financial_projection: "minimax/minimax-m2.5:free",
   call_brief_summary: "minimax/minimax-m2.5:free",
   climate_analysis: "minimax/minimax-m2.5:free",
-  technical_analysis: "google/gemini-2.0-flash-001",
+  technical_analysis: "google/gemini-2.0-pro-exp-02-05",
   market_research: "minimax/minimax-m2.5:free",
-  report_executive_summary: "google/gemini-2.0-flash-001",
-  report_market_analysis: "google/gemini-2.0-flash-001",
-  report_business_model: "google/gemini-2.0-flash-001",
-  report_financial_projection: "google/gemini-2.0-flash-001",
-  report_risk_mitigation: "google/gemini-2.0-flash-001",
-  report_conclusion: "google/gemini-2.0-flash-001",
+  report_executive_summary: "google/gemini-2.0-pro-exp-02-05",
+  report_market_analysis: "google/gemini-2.0-pro-exp-02-05",
+  report_business_model: "google/gemini-2.0-pro-exp-02-05",
+  report_financial_projection: "google/gemini-2.0-pro-exp-02-05",
+  report_risk_mitigation: "google/gemini-2.0-pro-exp-02-05",
+  report_conclusion: "google/gemini-2.0-pro-exp-02-05",
 };
 
 // ── Token budget per task ─────────────────────────────────────────────
