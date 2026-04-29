@@ -47,6 +47,9 @@ import {
   Legend,
 } from "recharts";
 
+// Analysis Section Import
+import { AnalysisTab } from "@/components/analysis/AnalysisTab";
+
 const QUESTION_LABELS: Record<string, string> = {
   q1: "Legal Entity / Company Name",
   q2: "Primary Contact Person",
@@ -1298,228 +1301,13 @@ export function ProjectWorkspace({
             ANALYSIS TAB
         ══════════════════════════════════════════════════════════ */}
         {activeTab === "analysis" && (
-          <div className="space-y-5">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Analysis Workspace
-              </h2>
-              <p className="text-sm text-slate-500">
-                Financial insights, climate data, and AI-generated feasibility
-                outputs.
-              </p>
-            </div>
-
-            {!latestSubmission ? (
-              <Card>
-                <CardBody className="text-center py-12">
-                  <BarChart3 className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500 text-sm font-medium">
-                    Analysis available after questionnaire submission
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Ask the client to complete the form, then return here.
-                  </p>
-                </CardBody>
-              </Card>
-            ) : report ? (
-              <>
-                {/* Financial summary */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    {
-                      label: "Total CAPEX",
-                      value: formatCurrency(
-                        report.financial_model.capex_total,
-                        currency,
-                      ),
-                      icon: DollarSign,
-                      color: "text-blue-600 bg-blue-50",
-                    },
-                    {
-                      label: "Annual Revenue",
-                      value: formatCurrency(
-                        report.financial_model.total_annual_revenue,
-                        currency,
-                      ),
-                      icon: TrendingUp,
-                      color: "text-green-700 bg-green-50",
-                    },
-                    {
-                      label: "EBITDA",
-                      value: formatCurrency(
-                        report.financial_model.ebitda,
-                        currency,
-                      ),
-                      icon: BarChart3,
-                      color: "text-purple-600 bg-purple-50",
-                    },
-                    {
-                      label: "Payback Period",
-                      value: `${report.financial_model.payback_years} Years`,
-                      icon: Clock,
-                      color: "text-amber-600 bg-amber-50",
-                    },
-                  ].map(({ label, value, icon: Icon, color }) => (
-                    <Card key={label}>
-                      <CardBody className="flex items-center gap-3 py-4">
-                        <div className={`p-2.5 rounded-xl ${color}`}>
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-medium">
-                            {label}
-                          </p>
-                          <p className="text-lg font-bold text-slate-900">
-                            {value}
-                          </p>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  ))}
-                </div>
-
-                {/* Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  {cropChartData.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <h3 className="font-semibold text-slate-900 text-sm">
-                          Crop Revenue Breakdown
-                        </h3>
-                      </CardHeader>
-                      <CardBody>
-                        <ResponsiveContainer width="100%" height={220}>
-                          <BarChart data={cropChartData}>
-                            <CartesianGrid
-                              strokeDasharray="3 3"
-                              stroke="#f1f5f9"
-                            />
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                            <YAxis
-                              tick={{ fontSize: 11 }}
-                              tickFormatter={(v) =>
-                                `${(Number(v) / 1000).toFixed(0)}K`
-                              }
-                            />
-                            <Tooltip
-                              formatter={(v) =>
-                                formatCurrency(Number(v), currency)
-                              }
-                            />
-                            <Bar
-                              dataKey="revenue"
-                              fill="#1A5C38"
-                              radius={[4, 4, 0, 0]}
-                            />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </CardBody>
-                    </Card>
-                  )}
-                  {costPieData.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <h3 className="font-semibold text-slate-900 text-sm">
-                          Cost & Investment Breakdown
-                        </h3>
-                      </CardHeader>
-                      <CardBody>
-                        <ResponsiveContainer width="100%" height={220}>
-                          <PieChart>
-                            <Pie
-                              data={costPieData}
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              dataKey="value"
-                              label={({ name }) => name}
-                            >
-                              {costPieData.map((_, i) => (
-                                <Cell
-                                  key={i}
-                                  fill={CHART_COLORS[i % CHART_COLORS.length]}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              formatter={(v) =>
-                                formatCurrency(Number(v), currency)
-                              }
-                            />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </CardBody>
-                    </Card>
-                  )}
-                </div>
-
-                {/* Technical analysis */}
-                {report.sections.technical_analysis && (
-                  <Card>
-                    <CardHeader className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-900 text-sm">
-                        Technical Analysis
-                      </h3>
-                      <Badge variant="purple">AI Generated</Badge>
-                    </CardHeader>
-                    <CardBody>
-                      <MarkdownRenderer
-                        content={report.sections.technical_analysis.content}
-                        className="max-h-72 overflow-y-auto"
-                      />
-                    </CardBody>
-                  </Card>
-                )}
-
-                {/* Live context data */}
-                <LiveContextData
-                  projectId={project.id}
-                  existingMarket={report.sections?.context_market_data?.content}
-                  existingClimate={
-                    report.sections?.context_climate_data?.content
-                  }
-                  analysisData={analysisData}
-                  onFetch={fetchAnalysisData}
-                  loading={loading === "analysisData"}
-                />
-              </>
-            ) : (
-              <>
-                <Card>
-                  <CardBody className="space-y-4 py-8 text-center">
-                    <Zap className="w-8 h-8 text-green-600 mx-auto" />
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        Ready to Generate Analysis
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Questionnaire data received. The AI analysis engine will
-                        run technical feasibility, climate risk, and financial
-                        projections.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => generateReport()}
-                      loading={loading === "report"}
-                    >
-                      <Zap className="w-4 h-4" /> Generate Full Report &
-                      Analysis
-                    </Button>
-                  </CardBody>
-                </Card>
-
-                <LiveContextData
-                  projectId={project.id}
-                  existingMarket={undefined}
-                  existingClimate={undefined}
-                  analysisData={analysisData}
-                  onFetch={fetchAnalysisData}
-                  loading={loading === "analysisData"}
-                />
-              </>
-            )}
-          </div>
+          <AnalysisTab
+            project={project}
+            report={report}
+            currency={currency}
+            onGenerateReport={() => generateReport()}
+            loadingReport={loading === "report"}
+          />
         )}
 
         {/* ══════════════════════════════════════════════════════════
@@ -1701,10 +1489,14 @@ function FlagCard({
                 </Badge>
               )}
               {flag.status === "pending" && (
-                <span className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
-                  flag.is_manual ? "text-slate-400" : "text-purple-500"
-                }`}>
-                  <span className={`w-1 h-1 rounded-full ${flag.is_manual ? "bg-slate-300" : "bg-purple-400"}`} />
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
+                    flag.is_manual ? "text-slate-400" : "text-purple-500"
+                  }`}
+                >
+                  <span
+                    className={`w-1 h-1 rounded-full ${flag.is_manual ? "bg-slate-300" : "bg-purple-400"}`}
+                  />
                   {flag.is_manual ? "Consultant-added" : "AI-raised Gap"}
                 </span>
               )}
