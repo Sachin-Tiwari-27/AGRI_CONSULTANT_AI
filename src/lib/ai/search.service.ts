@@ -12,7 +12,7 @@ interface TavilyResponse {
 
 export async function searchWeb(
   query: string,
-  maxResults = 3, // Reduced from 5
+  maxResults = 6, // Back to 6 for better depth
 ): Promise<string> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
@@ -29,7 +29,7 @@ export async function searchWeb(
         query,
         max_results: maxResults,
         include_answer: true,
-        search_depth: "basic", // Changed from "advanced" — faster, fewer tokens used
+        search_depth: "advanced", // Back to advanced for deep detail
       }),
     });
 
@@ -43,9 +43,11 @@ export async function searchWeb(
       sections.push(`Summary: ${data.answer}`);
     }
 
-    // Trim each result to 300 chars (was 500) to reduce context size
+    // Increase snippet length to 1000 chars for richer detail
     data.results.forEach((r, i) => {
-      sections.push(`[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 300)}`);
+      sections.push(
+        `[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 1000)}`,
+      );
     });
 
     return sections.join("\n\n");
@@ -66,27 +68,25 @@ export async function researchMarket(
 ): Promise<string> {
   const primaryCrop = crops[0] || "vegetables";
   const cropList = crops.slice(0, 5).join(", ");
-  // Two focused queries instead of four broad ones
+  // Four focused queries for deep coverage
   const queries = [
-    `${cropList} wholesale price market demand ${country} 2024 2025`,
-    `greenhouse farming ${country} ${region} import statistics opportunity`,
+    `${cropList} wholesale price market trends 2024 2025 ${country} ${region}`,
+    `${cropList} demand and supply analysis ${country} agricultural export statistics`,
+    `cost of production for ${primaryCrop} in greenhouse ${country} 2024 2025`,
+    `government subsidies and agricultural incentives for greenhouse in ${country}`,
   ];
 
-  const results: string[] = [];
-
-  // Sequential (not parallel) to avoid Tavily rate limits
-  for (let i = 0; i < queries.length; i++) {
-    try {
-      const result = await searchWeb(queries[i], 3);
-      results.push(`Query: ${queries[i]}\n${result}`);
-    } catch {
-      results.push(`Query: ${queries[i]}\nSearch failed.`);
-    }
-    // Small delay between Tavily requests
-    if (i < queries.length - 1) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  }
+  // Parallel execution for deeper and faster research
+  const results = await Promise.all(
+    queries.map(async (q) => {
+      try {
+        const result = await searchWeb(q, 5);
+        return `Query: ${q}\n${result}`;
+      } catch {
+        return `Query: ${q}\nSearch failed.`;
+      }
+    })
+  );
 
   return results.join("\n\n---\n\n");
 }
