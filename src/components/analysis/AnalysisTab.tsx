@@ -303,11 +303,12 @@ export function AnalysisTab({
 
   async function deleteNote(id: string) {
     try {
-      await fetch(`/api/analysis/notes/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/analysis/notes/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
       setNotes((prev) => prev.filter((n) => n.id !== id));
       toast.success("Note removed");
     } catch {
-      toast.error("Failed to delete");
+      toast.error("Failed to delete note");
     }
   }
 
