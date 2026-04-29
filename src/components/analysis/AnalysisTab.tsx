@@ -261,14 +261,14 @@ export function AnalysisTab({
     }
   }
 
-  async function fetchLiveData() {
+  async function fetchLiveData(targetPanel?: typeof activePanel) {
     setFetchingData(true);
     try {
       const res = await fetch(`/api/analysis/data/${project.id}`);
       if (!res.ok) throw new Error("Fetch failed");
       setAnalysisData(await res.json());
       toast.success("Market & climate data loaded");
-      setActivePanel("market");
+      if (targetPanel) setActivePanel(targetPanel);
     } catch {
       toast.error("Failed to load live data");
     } finally {
@@ -444,7 +444,7 @@ export function AnalysisTab({
                   project={project}
                   onGenerate={onGenerateReport}
                   loading={loadingReport}
-                  onFetchData={fetchLiveData}
+                  onFetchData={() => fetchLiveData("market")}
                   fetchingData={fetchingData}
                   hasData={!!analysisData}
                   notesCount={notes.length}
@@ -835,7 +835,7 @@ export function AnalysisTab({
                   <QuickActions
                     hasData={!!analysisData}
                     fetchingData={fetchingData}
-                    onFetchData={fetchLiveData}
+                    onFetchData={() => fetchLiveData("market")}
                     onOpenChat={() => setActivePanel("chat")}
                     onOpenMarket={() => setActivePanel("market")}
                     notesCount={notes.length}
@@ -873,7 +873,7 @@ export function AnalysisTab({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={fetchLiveData}
+                  onClick={() => fetchLiveData("market")}
                   loading={fetchingData}
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -884,7 +884,7 @@ export function AnalysisTab({
                   <MarkdownRenderer content={analysisData.marketResearch} />
                 ) : (
                   <FetchPrompt
-                    onFetch={fetchLiveData}
+                    onFetch={() => fetchLiveData("market")}
                     loading={fetchingData}
                     icon={<Globe className="w-8 h-8 text-slate-300" />}
                     title="Load market research"
@@ -894,137 +894,7 @@ export function AnalysisTab({
               </div>
             </div>
 
-            {/* Climate data */}
-            {analysisData?.climateData && (
-              <div className="bg-white rounded-xl border border-slate-200">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-                  <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center">
-                    <CloudRain className="w-4 h-4 text-cyan-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      Historical Climate Data
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Monthly averages 2022–2025 · Open-Meteo API
-                    </p>
-                  </div>
-                </div>
-                <div className="p-5">
-                  {climateRows.length > 0 && (
-                    <div className="mb-5">
-                      <ResponsiveContainer width="100%" height={200}>
-                        <AreaChart data={climateRows}>
-                          <defs>
-                            <linearGradient
-                              id="maxGrad2"
-                              x1="0"
-                              y1="0"
-                              x2="0"
-                              y2="1"
-                            >
-                              <stop
-                                offset="5%"
-                                stopColor="#f97316"
-                                stopOpacity={0.25}
-                              />
-                              <stop
-                                offset="95%"
-                                stopColor="#f97316"
-                                stopOpacity={0}
-                              />
-                            </linearGradient>
-                            <linearGradient
-                              id="minGrad2"
-                              x1="0"
-                              y1="0"
-                              x2="0"
-                              y2="1"
-                            >
-                              <stop
-                                offset="5%"
-                                stopColor="#3b82f6"
-                                stopOpacity={0.25}
-                              />
-                              <stop
-                                offset="95%"
-                                stopColor="#3b82f6"
-                                stopOpacity={0}
-                              />
-                            </linearGradient>
-                            <linearGradient
-                              id="humGrad"
-                              x1="0"
-                              y1="0"
-                              x2="0"
-                              y2="1"
-                            >
-                              <stop
-                                offset="5%"
-                                stopColor="#8b5cf6"
-                                stopOpacity={0.2}
-                              />
-                              <stop
-                                offset="95%"
-                                stopColor="#8b5cf6"
-                                stopOpacity={0}
-                              />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke="#f1f5f9"
-                            vertical={false}
-                          />
-                          <XAxis
-                            dataKey="month"
-                            tick={{ fontSize: 11, fill: "#94a3b8" }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <YAxis
-                            tick={{ fontSize: 11, fill: "#94a3b8" }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <Tooltip />
-                          <Area
-                            type="monotone"
-                            dataKey="maxTemp"
-                            name="Max °C"
-                            stroke="#f97316"
-                            fill="url(#maxGrad2)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="minTemp"
-                            name="Min °C"
-                            stroke="#3b82f6"
-                            fill="url(#minGrad2)"
-                            strokeWidth={2}
-                            dot={false}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="humidity"
-                            name="Humidity %"
-                            stroke="#8b5cf6"
-                            fill="url(#humGrad)"
-                            strokeWidth={1.5}
-                            dot={false}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                  <div className="overflow-x-auto">
-                    <MarkdownRenderer content={analysisData.climateData} />
-                  </div>
-                </div>
-              </div>
-            )}
+
           </div>
 
           {/* Right: Notes */}
@@ -1054,12 +924,38 @@ export function AnalysisTab({
           <div className="lg:col-span-2 space-y-5">
             {climateRows.length > 0 ? (
               <>
-                {/* Temperature chart */}
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
-                  <p className="text-sm font-semibold text-slate-900 mb-4">
-                    Monthly Temperature Range (°C)
-                  </p>
-                  <ResponsiveContainer width="100%" height={240}>
+                <div className="bg-white rounded-xl border border-slate-200">
+                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center">
+                        <CloudRain className="w-4 h-4 text-cyan-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          Climate Analysis
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Historical temperature & humidity averages
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fetchLiveData("climate")}
+                      loading={fetchingData}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                    </Button>
+                  </div>
+
+                  <div className="p-5 space-y-8">
+                    {/* Temperature chart */}
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-4">
+                        Monthly Temperature Range (°C)
+                      </p>
+                      <ResponsiveContainer width="100%" height={240}>
                     <AreaChart data={climateRows}>
                       <defs>
                         <linearGradient id="maxG" x1="0" y1="0" x2="0" y2="1">
@@ -1125,10 +1021,10 @@ export function AnalysisTab({
                       />
                     </AreaChart>
                   </ResponsiveContainer>
-                </div>
+                    </div>
 
-                {/* Humidity chart */}
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    {/* Humidity chart */}
+                    <div>
                   <p className="text-sm font-semibold text-slate-900 mb-4">
                     Monthly Max Humidity (%)
                   </p>
@@ -1174,10 +1070,10 @@ export function AnalysisTab({
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                </div>
+                    </div>
 
-                {/* Growing window analysis */}
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    {/* Growing window analysis */}
+                    <div>
                   <p className="text-sm font-semibold text-slate-900 mb-3">
                     Growing Window Analysis
                   </p>
@@ -1223,13 +1119,15 @@ export function AnalysisTab({
                       <span className="w-3 h-3 rounded bg-red-400" /> Critical
                       (&gt;38°C)
                     </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </>
             ) : (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
                 <FetchPrompt
-                  onFetch={fetchLiveData}
+                  onFetch={() => fetchLiveData("climate")}
                   loading={fetchingData}
                   icon={
                     <Thermometer className="w-8 h-8 text-slate-300 mx-auto" />
