@@ -81,6 +81,21 @@ export async function POST(req: NextRequest) {
   const allAnswers: Record<string, unknown> =
     submissions?.reduce((acc, s) => ({ ...acc, ...s.answers }), {}) || {};
 
+  // Fetch consultant research notes to enrich the report
+  const { data: consultantNotes } = await supabase
+    .from("consultant_notes")
+    .select("category, title, content, is_pinned")
+    .eq("project_id", projectId)
+    .order("is_pinned", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const notesForReport = consultantNotes?.length
+    ? consultantNotes
+        .map((n) => `[${n.category.toUpperCase()}] ${n.title}:\n${n.content}`)
+        .join("\n\n")
+    : "No additional consultant research notes provided.";
+
   // Fetch existing report
   const { data: existingReport } = await supabase
     .from("reports")
@@ -178,7 +193,7 @@ export async function POST(req: NextRequest) {
   // ── Section variables ─────────────────────────────────────────────
   const trimmedMarket = trimContext(marketResearch, 2500);
   const trimmedClimate = trimContext(climateData, 1000);
-  const trimmedTechAnalysis = trimContext(technicalAnalysis, 1800);
+  const trimmedTechAnalysis = trimContext(technicalAnalysis, 2500);
 
   const sectionVars = {
     ...baseVars,
@@ -192,6 +207,7 @@ export async function POST(req: NextRequest) {
     ebitda_margin: financialModel?.ebitda_margin?.toString() || "0",
     payback_years: financialModel?.payback_years?.toString() || "0",
     strategic_highlights: `${cropList} production, year-round capability in ${project.country}, ${project.region} location advantage`,
+    consultant_research_notes: notesForReport,
   };
 
   // ── Section generation ────────────────────────────────────────────
