@@ -224,45 +224,52 @@ Max 500 words.
   report_executive_summary: `
 You are writing the Executive Summary of a professional agricultural feasibility report.
 This section should be compelling — it's what the bank or investor reads first.
-
+ 
 Project: {{project_title}}
 Location: {{region}}, {{country}}
 Consultant: {{consultant_name}}, {{company_name}}
 Currency: {{currency}}
-
+ 
 Technical analysis summary:
 {{technical_analysis}}
-
+ 
 Financial highlights (all in {{currency}}):
 - Total investment: {{capex_total}} {{currency}}
 - Annual revenue: {{total_annual_revenue}} {{currency}}
 - EBITDA: {{ebitda}} {{currency}} ({{ebitda_margin}}%)
 - Payback period: {{payback_years}} years
-
+ 
+Consultant's additional research and insights:
+{{consultant_research_notes}}
+ 
 Write a 3-4 paragraph executive summary specific to {{country}} and this project's context. Cover:
 - What the project is and where ({{region}}, {{country}})
 - Why this location and timing is strategic for {{country}}'s agricultural landscape
 - The financial opportunity with figures in {{currency}}
 - Why it is viable given local conditions
-
+- Incorporate any specific insights from the consultant's research notes above
+ 
 Tone: confident, professional, evidence-based. Reference specific local context.
 `,
 
   report_market_analysis: `
 You are writing the Market Analysis section of a professional agricultural feasibility report.
-
+ 
 Project: {{project_title}}
 Location: {{region}}, {{country}}
 Target crops: {{crop_types}}
 Target markets: {{target_markets}}
 Currency: {{currency}}
-
+ 
 Market research:
 {{market_research}}
-
+ 
 Climate and competitive advantage:
 {{technical_analysis}}
-
+ 
+Consultant's market research notes and insights:
+{{consultant_research_notes}}
+ 
 Write a thorough market analysis (400-600 words) covering:
 - Market size and demand for {{crop_types}} in {{country}} and region
 - Import dependency and local production gaps specific to {{country}}
@@ -270,7 +277,8 @@ Write a thorough market analysis (400-600 words) covering:
 - Target customer segments in {{country}}'s market
 - Price benchmarks in {{currency}} with seasonal variations
 - Export opportunities given {{country}}'s position
-
+- Incorporate any specific market insights from the consultant's research notes
+ 
 CRITICAL: Use Markdown tables to display price benchmarks, supply/demand metrics, and market segments. Use {{currency}} for all monetary values.
 `,
 
@@ -298,11 +306,14 @@ CRITICAL: Include a Markdown table summarizing revenue streams and target audien
 
   report_financial_projection: `
 You are writing the Financial Projection section of a professional agricultural feasibility report.
-
+ 
 Currency: {{currency}}
 Financial model (all values in {{currency}}):
 {{financial_model_json}}
-
+ 
+Consultant's financial research notes:
+{{consultant_research_notes}}
+ 
 Write a detailed Financial Projection section (400-500 words) explaining:
 - Capital investment breakdown in {{currency}}
 - Annual production projections by crop
@@ -310,7 +321,8 @@ Write a detailed Financial Projection section (400-500 words) explaining:
 - Operating cost breakdown (growing cost + manpower) in {{currency}}
 - EBITDA analysis and margin explanation
 - Break-even timeline and ROI
-
+- Any specific financial considerations noted by the consultant
+ 
 CRITICAL: Use Markdown tables heavily. Show CAPEX breakdown, crop yields/revenues, and operating costs. All values in {{currency}}.
 `,
 
