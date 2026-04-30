@@ -146,6 +146,21 @@ export function QuestionnaireTab({
         new Date(b.submitted_at!).getTime() -
         new Date(a.submitted_at!).getTime(),
     )[0];
+
+  // Group by round and take the latest one to ensure only 1 card per round
+  const displaySubmissions = Object.values(
+    submissions.reduce(
+      (acc, sub) => {
+        // Since we don't have created_at, we assume later entries in the array are newer.
+        // If the backend is already deduplicating pending ones, this mainly handles 
+        // the case where a new record was created after a previous submission.
+        acc[sub.round] = sub;
+        return acc;
+      },
+      {} as Record<number, Submission>,
+    ),
+  ).sort((a, b) => b.round - a.round);
+
   const pendingFlags = flags.filter((f) => f.status === "pending");
   const acceptedFlags = flags.filter((f) => f.status === "accepted");
   const dismissedFlags = flags.filter((f) => f.status === "dismissed");
@@ -195,7 +210,6 @@ export function QuestionnaireTab({
             variant="outline"
             onClick={onSendQuestionnaire}
             loading={loading === "send_q"}
-            disabled={!!latestSubmission}
           >
             <Send className="w-3.5 h-3.5" />{" "}
             {submissions.length > 0 ? "Resend Link" : "Send Form"}
@@ -317,7 +331,7 @@ export function QuestionnaireTab({
               }
             />
           ) : (
-            submissions.map((sub) => (
+            displaySubmissions.map((sub) => (
               <SubmissionCard
                 key={sub.id}
                 submission={sub}

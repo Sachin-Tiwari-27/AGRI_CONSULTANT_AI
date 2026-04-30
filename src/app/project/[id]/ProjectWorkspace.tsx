@@ -73,7 +73,16 @@ export function ProjectWorkspace({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setProject((p) => ({ ...p, status: "questionnaire_sent" }));
+      
+      // Refresh project data to get updated questionnaire_submissions
+      const pRes = await fetch(`/api/projects/${project.id}`);
+      if (pRes.ok) {
+        const updated = await pRes.json();
+        setProject(updated);
+      } else {
+        setProject((p) => ({ ...p, status: "questionnaire_sent" }));
+      }
+      
       toast.success(`Questionnaire sent to ${project.client_email}`);
     } catch (e: any) {
       toast.error(e.message || "Failed to send questionnaire");
