@@ -111,7 +111,7 @@ interface Props {
     reason: string;
     suggested_question: string;
     severity: "required" | "recommended";
-  }) => void;
+  }) => Promise<boolean>;
 }
 
 export function QuestionnaireTab({
@@ -150,19 +150,21 @@ export function QuestionnaireTab({
   const acceptedFlags = flags.filter((f) => f.status === "accepted");
   const dismissedFlags = flags.filter((f) => f.status === "dismissed");
 
-  function submitGap() {
+  async function submitGap() {
     if (!newGap.field_name || !newGap.reason || !newGap.suggested_question) {
       toast.error("Please fill in all fields");
       return;
     }
-    onAddFlag(newGap);
-    setNewGap({
-      field_name: "",
-      reason: "",
-      suggested_question: "",
-      severity: "recommended",
-    });
-    setShowAddGap(false);
+    const success = await onAddFlag(newGap);
+    if (success) {
+      setNewGap({
+        field_name: "",
+        reason: "",
+        suggested_question: "",
+        severity: "recommended",
+      });
+      setShowAddGap(false);
+    }
   }
 
   const completionRate = latestSubmission

@@ -248,8 +248,10 @@ export function ProjectWorkspace({
       if (!res.ok) throw new Error(data.error);
       setFlags((f) => [...f, data.flag]);
       toast.success("Custom gap added");
+      return true;
     } catch (e: any) {
       toast.error(e.message || "Failed to add gap");
+      return false;
     } finally {
       setLoading(null);
     }
