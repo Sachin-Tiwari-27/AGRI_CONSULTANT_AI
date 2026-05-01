@@ -1,20 +1,14 @@
 import type { AITask } from "@/types";
 
-// ── Prompt store ──────────────────────────────────────────────────────
-// All prompts live here. Never inline in business logic.
-// Variables injected as {{variable_name}} — replaced at call time.
-// IMPORTANT: No hardcoded currencies, countries, or region-specific benchmarks.
-// All location/currency context comes from project variables.
-
 export const PROMPTS: Record<AITask, string> = {
   // ── Stage 1: summarise call notes ──────────────────────────────────
   call_brief_summary: `
 You are an expert agricultural consultant assistant. A consultant just completed an introductory call with a client.
 
-Consultant's raw notes:
+Consultant's raw notes or transcript:
 {{raw_notes}}
 
-Extract and structure the following into clean JSON:
+Extract and structure the following into clean JSON. Be concise — only include fields that are actually mentioned.
 {
   "client_name": "",
   "region": "",
@@ -26,11 +20,60 @@ Extract and structure the following into clean JSON:
   "experience_level": "",
   "target_market": [],
   "funding_status": "",
+  "agro_tourism_interest": false,
+  "water_source_mentioned": "",
+  "power_source_mentioned": "",
   "key_concerns": [],
   "consultant_notes": ""
 }
 
 Return only valid JSON. No preamble or explanation.
+`,
+
+  // ── NEW: Questionnaire personalisation ─────────────────────────────
+  personalize_questionnaire: `
+You are an agricultural consultant assistant helping personalise a client questionnaire.
+
+The consultant just completed an intro call with a client. Here is what was learned:
+
+Call brief:
+{{call_brief}}
+
+Project context:
+- Location: {{region}}, {{country}}
+- Crops: {{crop_types}}
+- Project type: {{project_type}}
+- Budget: {{budget_range}} {{currency}}
+
+The base questionnaire has these sections and question IDs:
+{{template_summary}}
+
+Your task: Suggest personalisation of this questionnaire based on the call brief.
+
+Return a JSON object:
+{
+  "covering_note": "1-2 sentence note for the consultant explaining what was changed and why",
+  "add": [
+    {
+      "section_id": "s2",
+      "label": "Could you provide the EC and TDS reading from your water source?",
+      "type": "textarea",
+      "required": true,
+      "reason": "Client mentioned deep well — water quality is critical for hydroponic crops"
+    }
+  ],
+  "annotate": {
+    "q17": "Client mentioned agro-tourism during the call — flag this question"
+  },
+  "reorder": {}
+}
+
+Rules:
+- Only add questions that are genuinely missing from the base template and directly relevant to what was discussed on the call
+- Do not add more than 4 new questions
+- Do not reorder unless there is a strong reason
+- If nothing needs changing, return empty add/annotate/reorder arrays and explain in covering_note
+- Return only valid JSON
 `,
 
   // ── Stage 3: gap detection ──────────────────────────────────────────
@@ -125,7 +168,7 @@ Write in professional English. Reference actual project parameters. Avoid generi
 Max 700 words.
 `,
 
-  // ── Stage 4: climate analysis (uses Open-Meteo data) ───────────────
+  // ── Stage 4: climate analysis ───────────────────────────────────────
   climate_analysis: `
 You are an agricultural climate specialist. Analyse the climate data below for crop viability.
 
@@ -154,7 +197,7 @@ IMPORTANT: All monetary values must be in {{currency}}. Do NOT use any other cur
 
 Project inputs:
 - Greenhouse area: {{greenhouse_area_sqm}} sqm
-- Net house area: {{nethouse_area_sqm}} sqm  
+- Net house area: {{nethouse_area_sqm}} sqm
 - Target crops: {{crop_types}}
 - Location: {{region}}, {{country}}
 - Project type: {{project_type}}
@@ -163,13 +206,7 @@ Project inputs:
 - Agro-tourism planned: {{agro_tourism}}
 - Target market: {{target_markets}}
 
-Use realistic benchmark values for {{country}}'s agricultural market. If you don't have specific data for {{country}}, use conservative regional estimates and note your assumptions. All prices and costs must be denominated in {{currency}}.
-
-Consider local factors for {{country}}:
-- Labour costs typical for the region
-- Input costs (substrates, nutrients, packaging) for local supply chains
-- Realistic farm-gate prices for {{crop_types}} in {{country}}'s market
-- Infrastructure costs appropriate for {{country}}
+Use realistic benchmark values for {{country}}'s agricultural market. All prices and costs must be denominated in {{currency}}.
 
 Output must be ONLY a valid JSON object. All numeric values are in {{currency}}. No text before or after the JSON.
 
@@ -196,7 +233,7 @@ Output must be ONLY a valid JSON object. All numeric values are in {{currency}}.
 }
 `,
 
-  // ── Stage 4: market research (results injected from Tavily) ─────────
+  // ── Stage 4: market research ────────────────────────────────────────
   market_research: `
 You are an agricultural market analyst. Synthesise the research data below into a concise market opportunity assessment.
 
@@ -224,52 +261,52 @@ Max 500 words.
   report_executive_summary: `
 You are writing the Executive Summary of a professional agricultural feasibility report.
 This section should be compelling — it's what the bank or investor reads first.
- 
+
 Project: {{project_title}}
 Location: {{region}}, {{country}}
 Consultant: {{consultant_name}}, {{company_name}}
 Currency: {{currency}}
- 
+
 Technical analysis summary:
 {{technical_analysis}}
- 
+
 Financial highlights (all in {{currency}}):
 - Total investment: {{capex_total}} {{currency}}
 - Annual revenue: {{total_annual_revenue}} {{currency}}
 - EBITDA: {{ebitda}} {{currency}} ({{ebitda_margin}}%)
 - Payback period: {{payback_years}} years
- 
+
 Consultant's additional research and insights:
 {{consultant_research_notes}}
- 
+
 Write a 3-4 paragraph executive summary specific to {{country}} and this project's context. Cover:
 - What the project is and where ({{region}}, {{country}})
 - Why this location and timing is strategic for {{country}}'s agricultural landscape
 - The financial opportunity with figures in {{currency}}
 - Why it is viable given local conditions
 - Incorporate any specific insights from the consultant's research notes above
- 
+
 Tone: confident, professional, evidence-based. Reference specific local context.
 `,
 
   report_market_analysis: `
 You are writing the Market Analysis section of a professional agricultural feasibility report.
- 
+
 Project: {{project_title}}
 Location: {{region}}, {{country}}
 Target crops: {{crop_types}}
 Target markets: {{target_markets}}
 Currency: {{currency}}
- 
+
 Market research:
 {{market_research}}
- 
+
 Climate and competitive advantage:
 {{technical_analysis}}
- 
+
 Consultant's market research notes and insights:
 {{consultant_research_notes}}
- 
+
 Write a thorough market analysis (400-600 words) covering:
 - Market size and demand for {{crop_types}} in {{country}} and region
 - Import dependency and local production gaps specific to {{country}}
@@ -278,7 +315,7 @@ Write a thorough market analysis (400-600 words) covering:
 - Price benchmarks in {{currency}} with seasonal variations
 - Export opportunities given {{country}}'s position
 - Incorporate any specific market insights from the consultant's research notes
- 
+
 CRITICAL: Use Markdown tables to display price benchmarks, supply/demand metrics, and market segments. Use {{currency}} for all monetary values.
 `,
 
@@ -306,14 +343,14 @@ CRITICAL: Include a Markdown table summarizing revenue streams and target audien
 
   report_financial_projection: `
 You are writing the Financial Projection section of a professional agricultural feasibility report.
- 
+
 Currency: {{currency}}
 Financial model (all values in {{currency}}):
 {{financial_model_json}}
- 
+
 Consultant's financial research notes:
 {{consultant_research_notes}}
- 
+
 Write a detailed Financial Projection section (400-500 words) explaining:
 - Capital investment breakdown in {{currency}}
 - Annual production projections by crop
@@ -322,7 +359,7 @@ Write a detailed Financial Projection section (400-500 words) explaining:
 - EBITDA analysis and margin explanation
 - Break-even timeline and ROI
 - Any specific financial considerations noted by the consultant
- 
+
 CRITICAL: Use Markdown tables heavily. Show CAPEX breakdown, crop yields/revenues, and operating costs. All values in {{currency}}.
 `,
 
@@ -350,7 +387,6 @@ Write a concise, confident 2-3 paragraph conclusion. Reaffirm the project's viab
 `,
 };
 
-// ── Template variable injection ───────────────────────────────────────
 export function buildPrompt(
   task: AITask,
   variables: Record<string, string>,
@@ -362,7 +398,6 @@ export function buildPrompt(
     template = template.replaceAll(`{{${key}}}`, value || "Not specified");
   }
 
-  // Warn about any unfilled variables in development
   if (process.env.NODE_ENV === "development") {
     const unfilled = template.match(/\{\{[^}]+\}\}/g);
     if (unfilled) {
