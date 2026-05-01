@@ -52,7 +52,7 @@ export function OverviewTab({
   const callBrief = (project as any).call_brief as CallBrief | null;
 
   const recommendedAction: RecommendedAction = (() => {
-    if (!hasSubmission && !project.questionnaire_submissions?.length) {
+    if (!hasSubmission && !(project as any).questionnaire_submissions?.length) {
       return { title: "Send the initial questionnaire", description: "Kick off data collection from the client.", buttonLabel: "Send Questionnaire", action: onSendQuestionnaire, disabled: loading === "send_q", loading: loading === "send_q" };
     }
     if (!hasSubmission) {

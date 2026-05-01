@@ -630,7 +630,7 @@ export function AnalysisTab({
                           ))}
                         </Pie>
                         <Tooltip
-                          formatter={(v: number) => formatCurrency(v, currency)}
+                          formatter={(v: any) => formatCurrency(v, currency)}
                         />
                         <Legend
                           iconType="circle"
@@ -790,7 +790,7 @@ export function AnalysisTab({
                         tickLine={false}
                         tickFormatter={(v) => `${v}°`}
                       />
-                      <Tooltip formatter={(v: number) => `${v}°C`} />
+                      <Tooltip formatter={(v: any) => `${v}°C`} />
                       <Area
                         type="monotone"
                         dataKey="maxTemp"
@@ -1000,7 +1000,7 @@ export function AnalysisTab({
                         tickLine={false}
                         tickFormatter={(v) => `${v}°`}
                       />
-                      <Tooltip formatter={(v: number) => `${v}°C`} />
+                      <Tooltip formatter={(v: any) => `${v}°C`} />
                       <Area
                         type="monotone"
                         dataKey="maxTemp"
@@ -1048,7 +1048,7 @@ export function AnalysisTab({
                         tickFormatter={(v) => `${v}%`}
                         domain={[0, 100]}
                       />
-                      <Tooltip formatter={(v: number) => `${v}%`} />
+                      <Tooltip formatter={(v: any) => `${v}%`} />
                       <Bar
                         dataKey="humidity"
                         name="Humidity"

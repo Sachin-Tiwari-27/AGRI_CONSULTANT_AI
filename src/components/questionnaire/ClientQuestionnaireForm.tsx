@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea, Select } from '@/components/ui/FormFields'
 import { CheckCircle, Upload, Leaf } from 'lucide-react'
 import type { QuestionnaireTemplate, QuestionnaireSubmission, Question } from '@/types'
+import { AsyncFeedback } from '@/components/ui/AsyncFeedback'
 type UploadedFileRef = {
   question_id: string
   filename: string
@@ -36,6 +37,7 @@ export function ClientQuestionnaireForm({ submission, template }: Props) {
     }))
   )
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null)
+  const feedbackRef = useRef<HTMLDivElement>(null)
 
   const sections = template.sections.sort((a, b) => a.order - b.order)
   const section = sections[currentSection]
