@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendQuestionnaireInvite } from '@/lib/email.service'
+import { logProjectEvent, logQuestionnaireSend } from '@/lib/events'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -18,7 +19,6 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await supabase
     .from('profiles').select('full_name, company_name').eq('id', user.id).single()
 
-  // Check if a pending (unsubmitted) submission already exists for this round/project
   const { data: existing } = await supabase
     .from('questionnaire_submissions')
     .select('*')
@@ -28,9 +28,9 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   let submission = existing
+  const isResend = !!existing
 
   if (!submission) {
-    // Create new submission record only if none exists
     const serviceClient = await createServiceClient()
     const { data: newSubmission, error } = await serviceClient
       .from('questionnaire_submissions')
@@ -45,11 +45,10 @@ export async function POST(req: NextRequest) {
 
     if (error || !newSubmission)
       return NextResponse.json({ error: 'Failed to create submission' }, { status: 500 })
-    
+
     submission = newSubmission
   }
 
-  // Send email
   await sendQuestionnaireInvite({
     clientEmail: project.client_email,
     clientName: project.client_name,
@@ -58,10 +57,31 @@ export async function POST(req: NextRequest) {
     token: submission.token,
   })
 
-  // Update project status
   await supabase.from('projects')
     .update({ status: 'questionnaire_sent' })
     .eq('id', projectId)
+
+  // Log to send history
+  await logQuestionnaireSend(supabase, {
+    projectId,
+    submissionId: submission.id,
+    round,
+    recipient: project.client_email,
+    sentBy: user.id,
+    isResend,
+  })
+
+  // Log project event
+  await logProjectEvent(supabase, {
+    projectId,
+    eventType: isResend ? 'questionnaire_resent' : 'questionnaire_sent',
+    actor: 'consultant',
+    title: isResend
+      ? `Questionnaire resent to ${project.client_email}`
+      : `Questionnaire sent to ${project.client_email}`,
+    detail: `Round ${round}`,
+    metadata: { round, recipient: project.client_email, is_resend: isResend },
+  })
 
   return NextResponse.json({ success: true, token: submission.token })
 }
