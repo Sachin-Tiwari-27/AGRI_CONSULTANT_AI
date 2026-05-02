@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
         questions: cleanedQuestions,
       })
       .eq('id', template.id)
+      .eq('consultant_id', user.id)
     savedTemplateId = template.id
   } else {
     // Create a new template from the edited default
