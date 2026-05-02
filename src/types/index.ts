@@ -10,7 +10,6 @@ export interface Profile {
   avatar_url?: string
   company_name?: string
   phone?: string
-  // Payment Preferences
   payment_preference?: 'always_upfront' | 'project_basis'
   default_currency?: string
   default_amount?: number
@@ -40,7 +39,6 @@ export interface Project {
   client_name: string
   title: string
   status: ProjectStatus
-  // structured call brief — seeds all downstream AI
   region?: string
   country?: string
   gps_coordinates?: string
@@ -53,17 +51,37 @@ export interface Project {
   target_market?: string[]
   funding_status?: string
   consultant_notes?: string
-  // meeting
+  call_brief?: CallBrief | null
+  transcript_url?: string | null
   meet_link?: string
   meet_scheduled_at?: string
   meet_recording_url?: string
-  // report
   report_price?: number
   currency?: string
   report_published_at?: string
-  // metadata
   created_at: string
   updated_at: string
+}
+
+// ── Call Brief (AI-extracted from transcript) ────────────────────────
+
+export interface CallBrief {
+  client_name?: string
+  region?: string
+  country?: string
+  land_size_sqm?: number | null
+  crop_types?: string[]
+  project_type?: string
+  budget_range?: string
+  experience_level?: string
+  target_market?: string[]
+  funding_status?: string
+  key_concerns?: string[]
+  agro_tourism_interest?: boolean
+  water_source_mentioned?: string
+  power_source_mentioned?: string
+  consultant_notes?: string
+  extracted_at?: string
 }
 
 // ── Questionnaire ────────────────────────────────────────────────────
@@ -99,9 +117,11 @@ export interface Question {
   placeholder?: string
   helper_text?: string
   options?: QuestionOption[]
-  conditions?: ConditionalRule[]  // show this question only if conditions met
+  conditions?: ConditionalRule[]
   section_id: string
   order: number
+  ai_suggested?: boolean  // NEW: flagged by personalisation AI
+  deleted?: boolean       // NEW: soft-delete in preview editor
 }
 
 export interface QuestionSection {
@@ -125,7 +145,7 @@ export interface QuestionnaireSubmission {
   id: string
   project_id: string
   template_id: string
-  token: string              // unique link token for client — no login needed
+  token: string
   client_email: string
   answers: Record<string, unknown>
   uploaded_files: UploadedFile[]
@@ -140,6 +160,52 @@ export interface UploadedFile {
   url: string
   size: number
   mime_type: string
+}
+
+// ── Questionnaire send log ────────────────────────────────────────────
+
+export interface QuestionnaireSendLog {
+  id: string
+  project_id: string
+  submission_id: string | null
+  round: number
+  recipient: string
+  sent_by: string | null
+  is_resend: boolean
+  sent_at: string
+}
+
+// ── Project Events (activity log) ────────────────────────────────────
+
+export type ProjectEventType =
+  | 'project_created'
+  | 'call_scheduled'
+  | 'call_completed'
+  | 'transcript_uploaded'
+  | 'questionnaire_personalised'
+  | 'questionnaire_sent'
+  | 'questionnaire_resent'
+  | 'client_submitted'
+  | 'ai_gap_check'
+  | 'flag_actioned'
+  | 'follow_up_sent'
+  | 'report_generated'
+  | 'report_published'
+  | 'payment_initiated'
+  | 'payment_received'
+  | 'note_added'
+
+export type ProjectEventActor = 'consultant' | 'client' | 'system' | 'ai'
+
+export interface ProjectEvent {
+  id: string
+  project_id: string
+  event_type: ProjectEventType
+  actor: ProjectEventActor
+  title: string
+  detail?: string
+  metadata?: Record<string, unknown>
+  created_at: string
 }
 
 // ── AI ───────────────────────────────────────────────────────────────
@@ -158,6 +224,7 @@ export type AITask =
   | 'report_risk_mitigation'
   | 'report_conclusion'
   | 'call_brief_summary'
+  | 'personalize_questionnaire'  // NEW
 
 export type AIProvider = 'openrouter' | 'anthropic' | 'openai' | 'google'
 
@@ -186,6 +253,21 @@ export interface AIFlag {
   is_manual?: boolean
 }
 
+// ── Questionnaire personalisation diff ───────────────────────────────
+
+export interface PersonalisationDiff {
+  add: Array<{
+    section_id: string
+    label: string
+    type: QuestionType
+    required: boolean
+    reason: string
+  }>
+  annotate: Record<string, string>   // questionId → reason it was flagged
+  reorder: Record<string, number>    // questionId → suggested new order
+  covering_note: string              // short AI note for consultant
+}
+
 // ── Report ───────────────────────────────────────────────────────────
 
 export type ReportSectionKey =
@@ -207,10 +289,11 @@ export type ReportSectionKey =
   | 'context_market_data'
   | 'context_climate_data'
   | 'technical_analysis'
+
 export interface ReportSection {
   key: ReportSectionKey
   title: string
-  content: string           // markdown content
+  content: string
   ai_generated: boolean
   last_edited_at: string
   approved: boolean
@@ -227,6 +310,7 @@ export interface FinancialModel {
   ebitda: number
   ebitda_margin: number
   payback_years: number
+  assumptions?: string[]
 }
 
 export interface CropProjection {

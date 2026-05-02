@@ -2,22 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendReportReady } from "@/lib/email.service";
 import { generateReportPdfBuffer } from "@/lib/report-pdf";
+import { logProjectEvent } from "@/lib/events";
 import type { Report } from "@/types";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const serviceSupabase = await createServiceClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const { projectId } = await req.json();
 
-  // 1. Fetch project
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select("*, profiles!projects_consultant_id_fkey(full_name, company_name)")
@@ -25,91 +21,46 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (projectError || !project || project.consultant_id !== user.id) {
-    return NextResponse.json(
-      { error: "Project not found or access denied" },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Project not found or access denied" }, { status: 404 });
   }
 
   const { data: reportData } = await supabase
-    .from("reports")
-    .select("*")
-    .eq("project_id", projectId)
-    .single();
+    .from("reports").select("*").eq("project_id", projectId).single();
 
-  if (!reportData) {
-    return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  }
+  if (!reportData) return NextResponse.json({ error: "Report not found" }, { status: 404 });
 
-  // 2. Generate and upload PDF
+  // Generate and upload PDF
   let pdfPath: string | null = null;
   try {
-    const pdfBuffer = await generateReportPdfBuffer(
-      reportData as Report,
-      project.title,
-    );
+    const pdfBuffer = await generateReportPdfBuffer(reportData as Report, project.title);
     pdfPath = `${projectId}/${Date.now()}-report.pdf`;
-
     const { error: pdfUploadError } = await serviceSupabase.storage
       .from("reports")
-      .upload(pdfPath, pdfBuffer, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-
-    if (pdfUploadError) {
-      console.error("[Publish] PDF upload failed:", pdfUploadError);
-      // Don't block publish on PDF failure — just note it
-      pdfPath = null;
-    }
+      .upload(pdfPath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+    if (pdfUploadError) { console.error("[Publish] PDF upload failed:", pdfUploadError); pdfPath = null; }
   } catch (pdfErr) {
     console.error("[Publish] PDF generation failed:", pdfErr);
     pdfPath = null;
   }
 
-  // 3. Update report status — this must succeed
   const { error: reportUpdateError } = await supabase
     .from("reports")
-    .update({
-      status: "published",
-      ...(pdfPath ? { pdf_url: pdfPath } : {}),
-    })
+    .update({ status: "published", ...(pdfPath ? { pdf_url: pdfPath } : {}) })
     .eq("project_id", projectId);
 
   if (reportUpdateError) {
-    return NextResponse.json(
-      {
-        error: "Failed to update report status",
-        details: reportUpdateError.message,
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to update report status", details: reportUpdateError.message }, { status: 500 });
   }
 
-  // 4. Update project status
-  await supabase
-    .from("projects")
-    .update({ status: "report_published" })
-    .eq("id", projectId);
+  await supabase.from("projects").update({ status: "report_published" }).eq("id", projectId);
 
-  // 5. Send email — non-blocking, log failures
   const warnings: string[] = [];
-
-  if (!pdfPath) {
-    warnings.push(
-      "PDF generation failed — report published without PDF attachment.",
-    );
-  }
+  if (!pdfPath) warnings.push("PDF generation failed — report published without PDF attachment.");
 
   try {
-    const consultantProfile = project.profiles as {
-      full_name?: string;
-      company_name?: string;
-    } | null;
-    const consultantName =
-      consultantProfile?.full_name || user.email || "Your Consultant";
+    const consultantProfile = project.profiles as { full_name?: string; company_name?: string } | null;
+    const consultantName = consultantProfile?.full_name || user.email || "Your Consultant";
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
     await sendReportReady({
       clientEmail: project.client_email,
       clientName: project.client_name,
@@ -120,15 +71,23 @@ export async function POST(req: NextRequest) {
     });
   } catch (emailError) {
     console.error("[Publish] Email failed:", emailError);
-    const msg =
-      emailError instanceof Error ? emailError.message : "Unknown email error";
-    warnings.push(
-      `Report published but client email failed to send: ${msg}. Check RESEND_API_KEY and EMAIL_FROM in your environment variables.`,
-    );
+    const msg = emailError instanceof Error ? emailError.message : "Unknown email error";
+    warnings.push(`Report published but client email failed to send: ${msg}.`);
   }
 
-  return NextResponse.json({
-    success: true,
-    ...(warnings.length > 0 ? { warnings } : {}),
+  // Log project event
+  await logProjectEvent(supabase, {
+    projectId,
+    eventType: 'report_published',
+    actor: 'consultant',
+    title: 'Report published and sent to client',
+    detail: `Client: ${project.client_email}${pdfPath ? ' · PDF generated' : ' · PDF unavailable'}`,
+    metadata: {
+      client_email: project.client_email,
+      pdf_generated: !!pdfPath,
+      report_price: project.report_price ?? null,
+    },
   });
+
+  return NextResponse.json({ success: true, ...(warnings.length > 0 ? { warnings } : {}) });
 }

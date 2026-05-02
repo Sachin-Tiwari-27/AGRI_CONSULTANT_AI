@@ -49,7 +49,7 @@ export function PaymentSettingsForm({ profile }: Props) {
         </div>
       </CardHeader>
       <CardBody className="space-y-6">
-        <Field label="Billing Strategy" helperText="Decide when to trigger the payment requirement.">
+        <Field label="Billing Strategy" hint="Decide when to trigger the payment requirement.">
           <Select
             value={preference}
             onChange={(e) => setPreference(e.target.value as any)}

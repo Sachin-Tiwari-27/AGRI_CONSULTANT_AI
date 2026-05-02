@@ -32,17 +32,17 @@ const PROVIDER_CONFIG: Record<
 const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   clarification_check: "minimax/minimax-m2.5:free",
   followup_questions: "minimax/minimax-m2.5:free",
-  financial_projection: "minimax/minimax-m2.5:free",
-  call_brief_summary: "minimax/minimax-m2.5:free",
+  financial_projection: "openai/gpt-oss-120b:free",
+  call_brief_summary: "openai/gpt-oss-120b:free",
   climate_analysis: "minimax/minimax-m2.5:free",
   technical_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
   market_research: "minimax/minimax-m2.5:free",
-  report_executive_summary: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_executive_summary: "openai/gpt-oss-120b:free",
   report_market_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_business_model: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_business_model: "openai/gpt-oss-120b:free",
   report_financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
   report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_conclusion: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_conclusion: "openai/gpt-oss-120b:free",
 };
 
 // ── Token budget per task ─────────────────────────────────────────────
