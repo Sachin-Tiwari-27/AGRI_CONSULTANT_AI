@@ -51,11 +51,17 @@ export interface Project {
   target_market?: string[]
   funding_status?: string
   consultant_notes?: string
+  // Pkg1 additions
   call_brief?: CallBrief | null
   transcript_url?: string | null
+  // Pkg2 additions — consultant-edited financial model
+  financial_model_override?: FinancialModel | null
+  financial_model_notes?: string | null
+  // Meeting
   meet_link?: string
   meet_scheduled_at?: string
   meet_recording_url?: string
+  // Report
   report_price?: number
   currency?: string
   report_published_at?: string
@@ -120,8 +126,8 @@ export interface Question {
   conditions?: ConditionalRule[]
   section_id: string
   order: number
-  ai_suggested?: boolean  // NEW: flagged by personalisation AI
-  deleted?: boolean       // NEW: soft-delete in preview editor
+  ai_suggested?: boolean
+  deleted?: boolean
 }
 
 export interface QuestionSection {
@@ -189,6 +195,7 @@ export type ProjectEventType =
   | 'ai_gap_check'
   | 'flag_actioned'
   | 'follow_up_sent'
+  | 'financial_model_edited'   // NEW in pkg2
   | 'report_generated'
   | 'report_published'
   | 'payment_initiated'
@@ -224,7 +231,7 @@ export type AITask =
   | 'report_risk_mitigation'
   | 'report_conclusion'
   | 'call_brief_summary'
-  | 'personalize_questionnaire'  // NEW
+  | 'personalize_questionnaire'
 
 export type AIProvider = 'openrouter' | 'anthropic' | 'openai' | 'google'
 
@@ -263,9 +270,9 @@ export interface PersonalisationDiff {
     required: boolean
     reason: string
   }>
-  annotate: Record<string, string>   // questionId → reason it was flagged
-  reorder: Record<string, number>    // questionId → suggested new order
-  covering_note: string              // short AI note for consultant
+  annotate: Record<string, string>
+  reorder: Record<string, number>
+  covering_note: string
 }
 
 // ── Report ───────────────────────────────────────────────────────────
