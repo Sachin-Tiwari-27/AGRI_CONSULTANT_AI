@@ -17,7 +17,7 @@ interface Props {
   initialModel: FinancialModel | null
   initialNotes: string
   source: 'override' | 'report_draft' | 'none'
-  onSaved: (model: FinancialModel) => void
+  onSaved: (model: FinancialModel, notes: string) => void
 }
 
 // ── Derived field recalculator (mirrors server logic) ─────────────────
@@ -171,7 +171,7 @@ export function FinancialModelEditor({ projectId, currency, initialModel, initia
       if (!res.ok) throw new Error(data.error || 'Save failed')
       setModel(data.financialModel)
       setDirty(false)
-      onSaved(data.financialModel)
+      onSaved(data.financialModel, notes)
       toast.success('Financial model saved — report will use these figures on next generation')
     } catch (e: any) {
       toast.error(e.message || 'Failed to save financial model')

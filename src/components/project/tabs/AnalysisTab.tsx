@@ -345,7 +345,7 @@ export function AnalysisTab({ project, report, currency, onGenerateReport, loadi
                         <Pie data={costData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" paddingAngle={3}>
                           {costData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                         </Pie>
-                        <Tooltip formatter={(v: number) => formatCurrency(v, currency)} />
+                        <Tooltip formatter={(v: any) => formatCurrency(v, currency)} />
                         <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
                       </PieChart>
                     </ResponsiveContainer>
@@ -422,8 +422,8 @@ export function AnalysisTab({ project, report, currency, onGenerateReport, loadi
               initialModel={fmData?.financialModel ?? report?.financial_model ?? null}
               initialNotes={fmData?.notes ?? ''}
               source={fmData?.source ?? 'none'}
-              onSaved={saved => {
-                setFmData(prev => ({ ...prev!, financialModel: saved, source: 'override' }))
+              onSaved={(saved, savedNotes) => {
+                setFmData(prev => ({ ...prev!, financialModel: saved, notes: savedNotes, source: 'override' }))
               }}
             />
           )}
@@ -492,7 +492,7 @@ export function AnalysisTab({ project, report, currency, onGenerateReport, loadi
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={v => `${v}°`} />
-                      <Tooltip formatter={(v: number) => `${v}°C`} />
+                      <Tooltip formatter={(v: any) => `${v}°C`} />
                       <Area type="monotone" dataKey="maxTemp" name="Max Temp" stroke="#ef4444" fill="url(#maxG)" strokeWidth={2.5} dot={{ fill: "#ef4444", r: 3 }} />
                       <Area type="monotone" dataKey="minTemp" name="Min Temp" stroke="#3b82f6" fill="url(#minG)" strokeWidth={2.5} dot={{ fill: "#3b82f6", r: 3 }} />
                     </AreaChart>
