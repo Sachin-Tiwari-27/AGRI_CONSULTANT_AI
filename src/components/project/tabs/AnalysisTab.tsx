@@ -1,66 +1,22 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import {
-  TrendingUp,
-  DollarSign,
-  Clock,
-  BarChart3,
-  Plus,
-  X,
-  Send,
-  Bot,
-  User,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  Trash2,
-  Sparkles,
-  RefreshCw,
-  CloudRain,
-  Activity,
-  MessageSquare,
-  BookOpen,
-  Lightbulb,
-  Pin,
-  Search,
-  Globe,
-  Thermometer,
-  Droplets,
-  Wind,
-  AlertCircle,
-  CheckCircle2,
-  ExternalLink,
-  AreaChart as AreaChartIcon,
-  ArrowUpRight,
-  ArrowDownRight,
-  Zap,
-  FileBarChart,
-  PenLine,
-  Brain,
+  TrendingUp, DollarSign, Clock, BarChart3, Plus, X, Send,
+  Bot, User, Loader2, Trash2, Sparkles, RefreshCw, CloudRain,
+  Activity, MessageSquare, BookOpen, Lightbulb, Pin, Globe,
+  Thermometer, CheckCircle2, ArrowUpRight, Zap, PenLine, Brain,
+  TableProperties,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { toast } from "@/components/ui/Toast";
-import type { Report, Project } from "@/types";
+import { FinancialModelEditor } from "@/components/analysis/FinancialModelEditor";
+import type { Report, Project, FinancialModel } from "@/types";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface ConsultantNote {
@@ -93,54 +49,19 @@ interface Props {
 }
 
 const NOTE_CATEGORIES = [
-  {
-    value: "market",
-    label: "Market",
-    color: "bg-blue-100 text-blue-700 border-blue-200",
-    dot: "bg-blue-500",
-  },
-  {
-    value: "climate",
-    label: "Climate",
-    color: "bg-cyan-100 text-cyan-700 border-cyan-200",
-    dot: "bg-cyan-500",
-  },
-  {
-    value: "technical",
-    label: "Technical",
-    color: "bg-purple-100 text-purple-700 border-purple-200",
-    dot: "bg-purple-500",
-  },
-  {
-    value: "financial",
-    label: "Financial",
-    color: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    dot: "bg-emerald-500",
-  },
-  {
-    value: "general",
-    label: "General",
-    color: "bg-slate-100 text-slate-600 border-slate-200",
-    dot: "bg-slate-400",
-  },
+  { value: "market",    label: "Market",    color: "bg-blue-100 text-blue-700 border-blue-200",     dot: "bg-blue-500" },
+  { value: "climate",   label: "Climate",   color: "bg-cyan-100 text-cyan-700 border-cyan-200",      dot: "bg-cyan-500" },
+  { value: "technical", label: "Technical", color: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
+  { value: "financial", label: "Financial", color: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
+  { value: "general",   label: "General",   color: "bg-slate-100 text-slate-600 border-slate-200",   dot: "bg-slate-400" },
 ] as const;
 
-const CHART_PALETTE = [
-  "#1A5C38",
-  "#2E7D52",
-  "#4CAF82",
-  "#7DD3B0",
-  "#A8E6CA",
-  "#D4F5E9",
-];
+const CHART_PALETTE = ["#1A5C38","#2E7D52","#4CAF82","#7DD3B0","#A8E6CA","#D4F5E9"];
 
 function getCategoryStyle(category: string) {
-  return (
-    NOTE_CATEGORIES.find((c) => c.value === category) || NOTE_CATEGORIES[4]
-  );
+  return NOTE_CATEGORIES.find(c => c.value === category) || NOTE_CATEGORIES[4];
 }
 
-// ── Custom Tooltip ────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label, currency }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -148,118 +69,80 @@ function CustomTooltip({ active, payload, label, currency }: any) {
       <p className="font-semibold mb-1 text-slate-300">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ color: p.color || "#4CAF82" }}>
-          {p.name}:{" "}
-          {typeof p.value === "number" && p.value > 100
-            ? formatCurrency(p.value, currency)
-            : p.value}
+          {p.name}: {typeof p.value === "number" && p.value > 100 ? formatCurrency(p.value, currency) : p.value}
         </p>
       ))}
     </div>
   );
 }
 
-// ── Climate Chart Parser ──────────────────────────────────────────────
 function parseClimateTable(md: string) {
-  const rows = md
-    .split("\n")
-    .filter((r) => r.includes("|") && !r.includes("---"));
+  const rows = md.split("\n").filter(r => r.includes("|") && !r.includes("---"));
   if (rows.length < 2) return [];
-  return rows
-    .slice(1)
-    .map((row) => {
-      const cells = row
-        .split("|")
-        .map((c) => c.trim())
-        .filter(Boolean);
-      if (cells.length < 4) return null;
-      return {
-        month: cells[0],
-        maxTemp: parseFloat(cells[1]) || 0,
-        minTemp: parseFloat(cells[2]) || 0,
-        humidity: parseFloat(cells[3]) || 0,
-      };
-    })
-    .filter(Boolean) as {
-    month: string;
-    maxTemp: number;
-    minTemp: number;
-    humidity: number;
-  }[];
+  return rows.slice(1).map(row => {
+    const cells = row.split("|").map(c => c.trim()).filter(Boolean);
+    if (cells.length < 4) return null;
+    return { month: cells[0], maxTemp: parseFloat(cells[1]) || 0, minTemp: parseFloat(cells[2]) || 0, humidity: parseFloat(cells[3]) || 0 };
+  }).filter(Boolean) as { month: string; maxTemp: number; minTemp: number; humidity: number }[];
 }
 
-// ── Main Component ────────────────────────────────────────────────────
-export function AnalysisTab({
-  project,
-  report,
-  currency,
-  onGenerateReport,
-  loadingReport,
-}: Props) {
-  const [activePanel, setActivePanel] = useState<
-    "overview" | "market" | "climate" | "chat"
-  >("overview");
+// ── Main component ────────────────────────────────────────────────────
+export function AnalysisTab({ project, report, currency, onGenerateReport, loadingReport }: Props) {
+  const [activePanel, setActivePanel] = useState<"overview" | "market" | "climate" | "chat" | "financial">("overview");
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [fetchingData, setFetchingData] = useState(false);
   const [notes, setNotes] = useState<ConsultantNote[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [showAddNote, setShowAddNote] = useState(false);
-  const [newNote, setNewNote] = useState({
-    title: "",
-    content: "",
-    category: "general" as ConsultantNote["category"],
-  });
+  const [newNote, setNewNote] = useState({ title: "", content: "", category: "general" as ConsultantNote["category"] });
   const [addingNote, setAddingNote] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const fm = report?.financial_model;
-  const climateRows = analysisData?.climateData
-    ? parseClimateTable(analysisData.climateData)
-    : [];
+  // Financial model state
+  const [fmLoading, setFmLoading] = useState(false);
+  const [fmData, setFmData] = useState<{ financialModel: FinancialModel | null; notes: string; source: 'override' | 'report_draft' | 'none' } | null>(null);
 
-  // Crop revenue chart from actual financial model
-  const cropChartData =
-    fm?.crops?.map((c) => ({
-      name: c.name.length > 14 ? c.name.slice(0, 12) + "…" : c.name,
-      revenue: c.annual_revenue,
-      yield: c.yield_tonnes,
-      pricePerKg: c.price_per_kg,
-      area: c.area_sqm,
-    })) || [];
+  const fm = fmData?.financialModel ?? report?.financial_model ?? null;
+  const climateRows = analysisData?.climateData ? parseClimateTable(analysisData.climateData) : [];
 
-  // Cost breakdown from actual financial model
-  const costData = fm
-    ? [
-        { name: "CAPEX", value: fm.capex_total, color: "#1A5C38" },
-        { name: "Pre-startup", value: fm.pre_startup_cost, color: "#2E7D52" },
-        { name: "Growing/yr", value: fm.growing_cost_annual, color: "#4CAF82" },
-        {
-          name: "Manpower/yr",
-          value: fm.manpower_cost_annual,
-          color: "#7DD3B0",
-        },
-      ].filter((d) => d.value > 0)
-    : [];
+  const cropChartData = fm?.crops?.map(c => ({
+    name: c.name.length > 14 ? c.name.slice(0, 12) + "…" : c.name,
+    revenue: c.annual_revenue, yield: c.yield_tonnes, pricePerKg: c.price_per_kg, area: c.area_sqm,
+  })) || [];
 
-  useEffect(() => {
-    loadNotes();
-  }, [project.id]);
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  const costData = fm ? [
+    { name: "CAPEX", value: fm.capex_total, color: "#1A5C38" },
+    { name: "Pre-startup", value: fm.pre_startup_cost, color: "#2E7D52" },
+    { name: "Growing/yr", value: fm.growing_cost_annual, color: "#4CAF82" },
+    { name: "Manpower/yr", value: fm.manpower_cost_annual, color: "#7DD3B0" },
+  ].filter(d => d.value > 0) : [];
+
+  useEffect(() => { loadNotes(); }, [project.id]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
   async function loadNotes() {
     setLoadingNotes(true);
     try {
       const res = await fetch(`/api/analysis/notes?projectId=${project.id}`);
       if (res.ok) setNotes(await res.json());
-    } catch {
-    } finally {
-      setLoadingNotes(false);
-    }
+    } finally { setLoadingNotes(false); }
   }
+
+  async function loadFinancialModel() {
+    setFmLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/financial-model`);
+      if (res.ok) setFmData(await res.json());
+    } finally { setFmLoading(false); }
+  }
+
+  // Auto-load FM when switching to financial panel
+  useEffect(() => {
+    if (activePanel === 'financial' && !fmData) loadFinancialModel();
+  }, [activePanel]);
 
   async function fetchLiveData(targetPanel?: typeof activePanel) {
     setFetchingData(true);
@@ -269,451 +152,239 @@ export function AnalysisTab({
       setAnalysisData(await res.json());
       toast.success("Market & climate data loaded");
       if (targetPanel) setActivePanel(targetPanel);
-    } catch {
-      toast.error("Failed to load live data");
-    } finally {
-      setFetchingData(false);
-    }
+    } catch { toast.error("Failed to load live data"); }
+    finally { setFetchingData(false); }
   }
 
   async function addNote() {
-    if (!newNote.title || !newNote.content) {
-      toast.error("Fill in title and content");
-      return;
-    }
+    if (!newNote.title || !newNote.content) { toast.error("Fill in title and content"); return; }
     setAddingNote(true);
     try {
       const res = await fetch("/api/analysis/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, ...newNote }),
       });
       if (!res.ok) throw new Error();
       const { note } = await res.json();
-      setNotes((prev) => [note, ...prev]);
+      setNotes(prev => [note, ...prev]);
       setNewNote({ title: "", content: "", category: "general" });
       setShowAddNote(false);
       toast.success("Research note saved");
-    } catch {
-      toast.error("Failed to save note");
-    } finally {
-      setAddingNote(false);
-    }
+    } catch { toast.error("Failed to save note"); }
+    finally { setAddingNote(false); }
   }
 
   async function deleteNote(id: string) {
     try {
       const res = await fetch(`/api/analysis/notes/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
-      setNotes((prev) => prev.filter((n) => n.id !== id));
+      if (!res.ok) throw new Error();
+      setNotes(prev => prev.filter(n => n.id !== id));
       toast.success("Note removed");
-    } catch {
-      toast.error("Failed to delete note");
-    }
+    } catch { toast.error("Failed to delete note"); }
   }
 
   async function togglePin(note: ConsultantNote) {
     try {
       const res = await fetch(`/api/analysis/notes/${note.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_pinned: !note.is_pinned }),
       });
       if (!res.ok) throw new Error();
       const { note: updated } = await res.json();
-      setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
-    } catch {
-      toast.error("Failed to update");
-    }
+      setNotes(prev => prev.map(n => n.id === note.id ? updated : n));
+    } catch { toast.error("Failed to update"); }
   }
 
   async function sendChat() {
     if (!chatInput.trim() || chatLoading) return;
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: chatInput,
-      timestamp: new Date().toISOString(),
-    };
-    setChatMessages((prev) => [...prev, userMsg]);
+    const userMsg: ChatMessage = { role: "user", content: chatInput, timestamp: new Date().toISOString() };
+    setChatMessages(prev => [...prev, userMsg]);
     setChatInput("");
     setChatLoading(true);
     try {
       const res = await fetch("/api/analysis/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: project.id,
-          message: chatInput,
-          context: {
-            project_type: project.project_type,
-            region: project.region,
-            country: project.country,
-            crop_types: project.crop_types,
-            currency,
-            notes: notes
-              .slice(0, 5)
-              .map((n) => `${n.category}: ${n.title} — ${n.content}`)
-              .join("\n"),
-            market_data: analysisData?.marketResearch?.slice(0, 1000),
-            climate_data: analysisData?.climateData?.slice(0, 500),
-          },
+          projectId: project.id, message: chatInput,
+          context: { currency, market_data: analysisData?.marketResearch?.slice(0, 1000), climate_data: analysisData?.climateData?.slice(0, 500) },
           history: chatMessages.slice(-8),
         }),
       });
       if (!res.ok) throw new Error();
       const { reply } = await res.json();
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: reply,
-        timestamp: new Date().toISOString(),
-      };
-      setChatMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      toast.error("AI research failed");
-      setChatLoading(false);
-    } finally {
-      setChatLoading(false);
-    }
+      setChatMessages(prev => [...prev, { role: "assistant", content: reply, timestamp: new Date().toISOString() }]);
+    } catch { toast.error("AI research failed"); }
+    finally { setChatLoading(false); }
   }
 
   async function saveChatAsNote(msg: ChatMessage) {
-    const note = {
-      title: "AI Research Insight",
-      content: msg.content,
-      category: "general" as const,
-    };
     setAddingNote(true);
     try {
       const res = await fetch("/api/analysis/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, ...note }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, title: "AI Research Insight", content: msg.content, category: "general" }),
       });
       if (!res.ok) throw new Error();
-      const { note: saved } = await res.json();
-      setNotes((prev) => [saved, ...prev]);
+      const { note } = await res.json();
+      setNotes(prev => [note, ...prev]);
       toast.success("Saved as research note");
-    } catch {
-      toast.error("Failed to save");
-    } finally {
-      setAddingNote(false);
-    }
+    } catch { toast.error("Failed to save"); }
+    finally { setAddingNote(false); }
   }
 
-  const pinnedNotes = notes.filter((n) => n.is_pinned);
-  const unpinnedNotes = notes.filter((n) => !n.is_pinned);
+  const notesProps = { notes, loading: loadingNotes, showAddForm: showAddNote, newNote, addingNote, onShowAdd: () => setShowAddNote(true), onHideAdd: () => setShowAddNote(false), onChangeNote: setNewNote, onAddNote: addNote, onDelete: deleteNote, onTogglePin: togglePin };
+
+  const PANELS = [
+    { id: "overview",   label: "Overview",       icon: BarChart3 },
+    { id: "financial",  label: "Financial model", icon: TableProperties },
+    { id: "market",     label: "Market data",     icon: Globe },
+    { id: "climate",    label: "Climate",         icon: Thermometer },
+    { id: "chat",       label: "AI research",     icon: Brain },
+  ];
 
   return (
     <div className="space-y-0">
-      {/* ── Panel nav ───────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit">
-        {[
-          { id: "overview", label: "Overview", icon: BarChart3 },
-          { id: "market", label: "Market Data", icon: Globe },
-          { id: "climate", label: "Climate", icon: Thermometer },
-          { id: "chat", label: "AI Research", icon: Brain },
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActivePanel(id as any)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activePanel === id
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
+      {/* Panel nav */}
+      <div className="flex items-center gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
+        {PANELS.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setActivePanel(id as any)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activePanel === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
             <Icon className="w-3.5 h-3.5" />
             {label}
-            {id === "chat" && chatMessages.length > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            )}
+            {id === "chat" && chatMessages.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+            {id === "financial" && fmData?.source === 'override' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Consultant override active" />}
           </button>
         ))}
       </div>
 
-      {/* ══════════════════════════════════════════════
-          OVERVIEW PANEL
-      ══════════════════════════════════════════════ */}
+      {/* ══ OVERVIEW ══════════════════════════════════════════════ */}
       {activePanel === "overview" && (
         <div className="space-y-5">
-          {!report ? (
-            /* No report yet */
+          {!fm ? (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
               <div className="lg:col-span-3">
-                <GenerateReportCard
-                  project={project}
-                  onGenerate={onGenerateReport}
-                  loading={loadingReport}
-                  onFetchData={() => fetchLiveData("market")}
-                  fetchingData={fetchingData}
-                  hasData={!!analysisData}
-                  notesCount={notes.length}
-                  hasSubmissions={(project.questionnaire_submissions?.length || 0) > 0}
-                />
+                <GenerateReportCard project={project} onGenerate={onGenerateReport} loading={loadingReport}
+                  onFetchData={() => fetchLiveData("market")} fetchingData={fetchingData}
+                  hasData={!!analysisData} notesCount={notes.length}
+                  hasSubmissions={(project.questionnaire_submissions?.length || 0) > 0} />
               </div>
-              <div className="lg:col-span-2">
-                <NotesPanel
-                  notes={notes}
-                  loading={loadingNotes}
-                  showAddForm={showAddNote}
-                  newNote={newNote}
-                  addingNote={addingNote}
-                  onShowAdd={() => setShowAddNote(true)}
-                  onHideAdd={() => setShowAddNote(false)}
-                  onChangeNote={setNewNote}
-                  onAddNote={addNote}
-                  onDelete={deleteNote}
-                  onTogglePin={togglePin}
-                  compact
-                />
-              </div>
+              <div className="lg:col-span-2"><NotesPanel {...notesProps} compact /></div>
             </div>
           ) : (
             <>
               {/* KPI strip */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
-                  {
-                    label: "Total Investment",
-                    value: formatCurrency(fm!.capex_total, currency),
-                    sub: `+ ${formatCurrency(fm!.pre_startup_cost, currency)} pre-startup`,
-                    icon: DollarSign,
-                    trend: null,
-                    bg: "bg-blue-50",
-                    iconColor: "text-blue-600",
-                  },
-                  {
-                    label: "Annual Revenue",
-                    value: formatCurrency(fm!.total_annual_revenue, currency),
-                    sub: `${fm!.crops?.length || 0} crop streams`,
-                    icon: TrendingUp,
-                    trend: "up",
-                    bg: "bg-emerald-50",
-                    iconColor: "text-emerald-600",
-                  },
-                  {
-                    label: "EBITDA",
-                    value: formatCurrency(fm!.ebitda, currency),
-                    sub: `${fm!.ebitda_margin}% margin`,
-                    icon: BarChart3,
-                    trend: fm!.ebitda_margin > 25 ? "up" : "neutral",
-                    bg: "bg-violet-50",
-                    iconColor: "text-violet-600",
-                  },
-                  {
-                    label: "Payback Period",
-                    value: `${fm!.payback_years} yrs`,
-                    sub: "from first harvest",
-                    icon: Clock,
-                    trend: fm!.payback_years < 5 ? "up" : "neutral",
-                    bg: "bg-amber-50",
-                    iconColor: "text-amber-600",
-                  },
-                ].map(
-                  ({ label, value, sub, icon: Icon, trend, bg, iconColor }) => (
-                    <div
-                      key={label}
-                      className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3"
-                    >
-                      <div className={`p-2.5 rounded-xl ${bg} flex-shrink-0`}>
-                        <Icon className={`w-4 h-4 ${iconColor}`} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-500 font-medium truncate">
-                          {label}
-                        </p>
-                        <p className="text-base font-bold text-slate-900 mt-0.5 leading-tight">
-                          {value}
-                        </p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          {trend === "up" && (
-                            <ArrowUpRight className="w-3 h-3 text-emerald-500" />
-                          )}
-                          <p className="text-[11px] text-slate-400 truncate">
-                            {sub}
-                          </p>
-                        </div>
+                  { label: "Total Investment", value: formatCurrency(fm.capex_total, currency), sub: `+ ${formatCurrency(fm.pre_startup_cost, currency)} pre-startup`, icon: DollarSign, trend: null, bg: "bg-blue-50", iconColor: "text-blue-600" },
+                  { label: "Annual Revenue",   value: formatCurrency(fm.total_annual_revenue, currency), sub: `${fm.crops?.length || 0} crop streams`, icon: TrendingUp, trend: "up", bg: "bg-emerald-50", iconColor: "text-emerald-600" },
+                  { label: "EBITDA",           value: formatCurrency(fm.ebitda, currency), sub: `${fm.ebitda_margin}% margin`, icon: BarChart3, trend: fm.ebitda_margin > 25 ? "up" : "neutral", bg: "bg-violet-50", iconColor: "text-violet-600" },
+                  { label: "Payback Period",   value: `${fm.payback_years} yrs`, sub: "from first harvest", icon: Clock, trend: fm.payback_years < 5 ? "up" : "neutral", bg: "bg-amber-50", iconColor: "text-amber-600" },
+                ].map(({ label, value, sub, icon: Icon, trend, bg, iconColor }) => (
+                  <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3">
+                    <div className={`p-2.5 rounded-xl ${bg} flex-shrink-0`}><Icon className={`w-4 h-4 ${iconColor}`} /></div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500 font-medium truncate">{label}</p>
+                      <p className="text-base font-bold text-slate-900 mt-0.5 leading-tight">{value}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        {trend === "up" && <ArrowUpRight className="w-3 h-3 text-emerald-500" />}
+                        <p className="text-[11px] text-slate-400 truncate">{sub}</p>
                       </div>
                     </div>
-                  ),
-                )}
+                  </div>
+                ))}
               </div>
 
-              {/* Charts row */}
+              {/* Edit model CTA */}
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-5 py-3">
+                <div className="flex items-center gap-2.5">
+                  <TableProperties className="w-4 h-4 text-slate-500" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      {fmData?.source === 'override' ? 'Using your saved financial model' : 'Using AI-generated financial model'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {fmData?.source === 'override' ? 'Figures are locked in — report will use these on next generation.' : 'Review and correct figures in the Financial model tab.'}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setActivePanel('financial')}>
+                  <TableProperties className="w-3.5 h-3.5" />
+                  {fmData?.source === 'override' ? 'Edit model' : 'Review & edit'}
+                </Button>
+              </div>
+
+              {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-                {/* Revenue by crop — takes 3 cols */}
                 <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        Revenue by Crop
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Annual projections in {currency}
-                      </p>
+                      <p className="text-sm font-semibold text-slate-900">Revenue by Crop</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Annual projections in {currency}</p>
                     </div>
-                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full font-medium border border-emerald-200">
-                      From Financial Model
-                    </span>
+                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full font-medium border border-emerald-200">From Financial Model</span>
                   </div>
                   {cropChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={cropChartData} barSize={32}>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="#f1f5f9"
-                          vertical={false}
-                        />
-                        <XAxis
-                          dataKey="name"
-                          tick={{ fontSize: 11, fill: "#64748b" }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 11, fill: "#64748b" }}
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(v) =>
-                            `${(Number(v) / 1000).toFixed(0)}K`
-                          }
-                        />
-                        <Tooltip
-                          content={<CustomTooltip currency={currency} />}
-                        />
-                        <Bar
-                          dataKey="revenue"
-                          name="Revenue"
-                          fill="#1A5C38"
-                          radius={[6, 6, 0, 0]}
-                        >
-                          {cropChartData.map((_, i) => (
-                            <Cell
-                              key={i}
-                              fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                            />
-                          ))}
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={v => `${(Number(v)/1000).toFixed(0)}K`} />
+                        <Tooltip content={<CustomTooltip currency={currency} />} />
+                        <Bar dataKey="revenue" name="Revenue" fill="#1A5C38" radius={[6,6,0,0]}>
+                          {cropChartData.map((_, i) => <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />)}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
-                  ) : (
-                    <EmptyChart label="No crop data in financial model" />
-                  )}
+                  ) : <EmptyChart label="No crop data in financial model" />}
                 </div>
-
-                {/* Cost pie — 2 cols */}
                 <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        Investment Mix
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Capital allocation
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-semibold text-slate-900 mb-4">Investment Mix</p>
                   {costData.length > 0 ? (
                     <ResponsiveContainer width="100%" height={200}>
                       <PieChart>
-                        <Pie
-                          data={costData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={80}
-                          dataKey="value"
-                          paddingAngle={3}
-                        >
-                          {costData.map((entry, i) => (
-                            <Cell key={i} fill={entry.color} />
-                          ))}
+                        <Pie data={costData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" paddingAngle={3}>
+                          {costData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                         </Pie>
-                        <Tooltip
-                          formatter={(v: any) => formatCurrency(v, currency)}
-                        />
-                        <Legend
-                          iconType="circle"
-                          iconSize={8}
-                          wrapperStyle={{ fontSize: 10, paddingTop: 8 }}
-                        />
+                        <Tooltip formatter={(v: number) => formatCurrency(v, currency)} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
                       </PieChart>
                     </ResponsiveContainer>
-                  ) : (
-                    <EmptyChart label="No cost data" />
-                  )}
+                  ) : <EmptyChart label="No cost data" />}
                 </div>
               </div>
 
-              {/* Crop detail table */}
+              {/* Crop table */}
               {fm?.crops && fm.crops.length > 0 && (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                   <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-900">
-                      Crop-Level Projections
-                    </p>
+                    <p className="text-sm font-semibold text-slate-900">Crop-Level Projections</p>
                     <span className="text-xs text-slate-500">{currency}</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-slate-50">
-                          {[
-                            "Crop",
-                            "Area (sqm)",
-                            "Yield (t/yr)",
-                            "Price/kg",
-                            "Annual Revenue",
-                          ].map((h) => (
-                            <th
-                              key={h}
-                              className="px-4 py-2.5 text-left font-semibold text-slate-600"
-                            >
-                              {h}
-                            </th>
+                          {["Crop","Area (sqm)","Yield (t/yr)","Price/kg","Annual Revenue"].map(h => (
+                            <th key={h} className="px-4 py-2.5 text-left font-semibold text-slate-600">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {fm.crops.map((crop, i) => (
-                          <tr
-                            key={i}
-                            className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors"
-                          >
+                          <tr key={i} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
                             <td className="px-4 py-2.5 font-medium text-slate-800 flex items-center gap-2">
-                              <span
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{
-                                  background:
-                                    CHART_PALETTE[i % CHART_PALETTE.length],
-                                }}
-                              />
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: CHART_PALETTE[i % CHART_PALETTE.length] }} />
                               {crop.name}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-600">
-                              {crop.area_sqm?.toLocaleString()}
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-600">
-                              {crop.yield_tonnes?.toFixed(1)}
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-600">
-                              {currency} {crop.price_per_kg?.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-2.5 font-semibold text-emerald-700">
-                              {formatCurrency(crop.annual_revenue, currency)}
-                            </td>
+                            <td className="px-4 py-2.5 text-slate-600">{crop.area_sqm?.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-slate-600">{crop.yield_tonnes?.toFixed(1)}</td>
+                            <td className="px-4 py-2.5 text-slate-600">{currency} {crop.price_per_kg?.toFixed(2)}</td>
+                            <td className="px-4 py-2.5 font-semibold text-emerald-700">{formatCurrency(crop.annual_revenue, currency)}</td>
                           </tr>
                         ))}
                         <tr className="border-t-2 border-slate-200 bg-slate-50">
-                          <td
-                            colSpan={4}
-                            className="px-4 py-2.5 font-semibold text-slate-700 text-right"
-                          >
-                            Total
-                          </td>
-                          <td className="px-4 py-2.5 font-bold text-emerald-700">
-                            {formatCurrency(fm.total_annual_revenue, currency)}
-                          </td>
+                          <td colSpan={4} className="px-4 py-2.5 font-semibold text-slate-700 text-right">Total</td>
+                          <td className="px-4 py-2.5 font-bold text-emerald-700">{formatCurrency(fm.total_annual_revenue, currency)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -721,126 +392,15 @@ export function AnalysisTab({
                 </div>
               )}
 
-              {/* Climate mini if available */}
-              {climateRows.length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Thermometer className="w-4 h-4 text-cyan-600" />
-                    <p className="text-sm font-semibold text-slate-900">
-                      Temperature Profile
-                    </p>
-                    <span className="text-xs text-slate-500 ml-auto">
-                      Monthly avg · 2022–2025
-                    </span>
-                  </div>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <AreaChart data={climateRows}>
-                      <defs>
-                        <linearGradient
-                          id="maxGrad"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="#f97316"
-                            stopOpacity={0.2}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#f97316"
-                            stopOpacity={0}
-                          />
-                        </linearGradient>
-                        <linearGradient
-                          id="minGrad"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0.2}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="#f1f5f9"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fontSize: 10, fill: "#94a3b8" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: "#94a3b8" }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => `${v}°`}
-                      />
-                      <Tooltip formatter={(v: any) => `${v}°C`} />
-                      <Area
-                        type="monotone"
-                        dataKey="maxTemp"
-                        name="Max °C"
-                        stroke="#f97316"
-                        fill="url(#maxGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="minTemp"
-                        name="Min °C"
-                        stroke="#3b82f6"
-                        fill="url(#minGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              {/* Notes + actions row */}
+              {/* Notes + actions */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                <div className="lg:col-span-2">
-                  <NotesPanel
-                    notes={notes}
-                    loading={loadingNotes}
-                    showAddForm={showAddNote}
-                    newNote={newNote}
-                    addingNote={addingNote}
-                    onShowAdd={() => setShowAddNote(true)}
-                    onHideAdd={() => setShowAddNote(false)}
-                    onChangeNote={setNewNote}
-                    onAddNote={addNote}
-                    onDelete={deleteNote}
-                    onTogglePin={togglePin}
-                  />
-                </div>
+                <div className="lg:col-span-2"><NotesPanel {...notesProps} /></div>
                 <div className="space-y-3">
-                  <QuickActions
-                    hasData={!!analysisData}
-                    fetchingData={fetchingData}
-                    onFetchData={() => fetchLiveData("market")}
-                    onOpenChat={() => setActivePanel("chat")}
-                    onOpenMarket={() => setActivePanel("market")}
-                    notesCount={notes.length}
-                    chatCount={chatMessages.length}
-                  />
+                  <QuickActions hasData={!!analysisData} fetchingData={fetchingData}
+                    onFetchData={() => fetchLiveData("market")} onOpenChat={() => setActivePanel("chat")}
+                    onOpenMarket={() => setActivePanel("market")} onOpenFinancial={() => setActivePanel("financial")}
+                    notesCount={notes.length} chatCount={chatMessages.length}
+                    hasFinancialOverride={fmData?.source === 'override'} />
                 </div>
               </div>
             </>
@@ -848,411 +408,156 @@ export function AnalysisTab({
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          MARKET DATA PANEL
-      ══════════════════════════════════════════════ */}
+      {/* ══ FINANCIAL MODEL ═══════════════════════════════════════ */}
+      {activePanel === "financial" && (
+        <div>
+          {fmLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <FinancialModelEditor
+              projectId={project.id}
+              currency={currency}
+              initialModel={fmData?.financialModel ?? report?.financial_model ?? null}
+              initialNotes={fmData?.notes ?? ''}
+              source={fmData?.source ?? 'none'}
+              onSaved={saved => {
+                setFmData(prev => ({ ...prev!, financialModel: saved, source: 'override' }))
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ══ MARKET DATA ═══════════════════════════════════════════ */}
       {activePanel === "market" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 space-y-5">
-            {/* Market research */}
+          <div className="lg:col-span-2">
             <div className="bg-white rounded-xl border border-slate-200">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-                    <Globe className="w-4 h-4 text-blue-600" />
-                  </div>
+                  <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center"><Globe className="w-4 h-4 text-blue-600" /></div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      Live Market Research
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      AI-aggregated from web sources
-                    </p>
+                    <p className="text-sm font-semibold text-slate-900">Live Market Research</p>
+                    <p className="text-xs text-slate-500">AI-aggregated from web sources</p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => fetchLiveData("market")}
-                  loading={fetchingData}
-                >
+                <Button size="sm" variant="outline" onClick={() => fetchLiveData("market")} loading={fetchingData}>
                   <RefreshCw className="w-3.5 h-3.5" /> Refresh
                 </Button>
               </div>
               <div className="p-5 max-h-[480px] overflow-y-auto">
-                {analysisData?.marketResearch ? (
-                  <MarkdownRenderer content={analysisData.marketResearch} />
-                ) : (
-                  <FetchPrompt
-                    onFetch={() => fetchLiveData("market")}
-                    loading={fetchingData}
-                    icon={<Globe className="w-8 h-8 text-slate-300" />}
-                    title="Load market research"
-                    desc="Pull live market data, crop prices, and demand analysis for this project."
-                  />
-                )}
+                {analysisData?.marketResearch
+                  ? <MarkdownRenderer content={analysisData.marketResearch} />
+                  : <FetchPrompt onFetch={() => fetchLiveData("market")} loading={fetchingData}
+                      icon={<Globe className="w-8 h-8 text-slate-300" />}
+                      title="Load market research" desc="Pull live market data, crop prices, and demand analysis for this project." />}
               </div>
             </div>
-
-
           </div>
-
-          {/* Right: Notes */}
-          <div>
-            <NotesPanel
-              notes={notes}
-              loading={loadingNotes}
-              showAddForm={showAddNote}
-              newNote={newNote}
-              addingNote={addingNote}
-              onShowAdd={() => setShowAddNote(true)}
-              onHideAdd={() => setShowAddNote(false)}
-              onChangeNote={setNewNote}
-              onAddNote={addNote}
-              onDelete={deleteNote}
-              onTogglePin={togglePin}
-            />
-          </div>
+          <div><NotesPanel {...notesProps} /></div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          CLIMATE PANEL
-      ══════════════════════════════════════════════ */}
+      {/* ══ CLIMATE ═══════════════════════════════════════════════ */}
       {activePanel === "climate" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 space-y-5">
+          <div className="lg:col-span-2">
             {climateRows.length > 0 ? (
-              <>
-                <div className="bg-white rounded-xl border border-slate-200">
-                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center">
-                        <CloudRain className="w-4 h-4 text-cyan-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Climate Analysis
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Historical temperature & humidity averages
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => fetchLiveData("climate")}
-                      loading={fetchingData}
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" /> Refresh
-                    </Button>
-                  </div>
-
-                  <div className="p-5 space-y-8">
-                    {/* Temperature chart */}
+              <div className="bg-white rounded-xl border border-slate-200">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center"><CloudRain className="w-4 h-4 text-cyan-600" /></div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-900 mb-4">
-                        Monthly Temperature Range (°C)
-                      </p>
-                      <ResponsiveContainer width="100%" height={240}>
+                      <p className="text-sm font-semibold text-slate-900">Climate Analysis</p>
+                      <p className="text-xs text-slate-500">Historical temperature & humidity averages</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => fetchLiveData("climate")} loading={fetchingData}>
+                    <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                  </Button>
+                </div>
+                <div className="p-5 space-y-6">
+                  <ResponsiveContainer width="100%" height={240}>
                     <AreaChart data={climateRows}>
                       <defs>
                         <linearGradient id="maxG" x1="0" y1="0" x2="0" y2="1">
-                          <stop
-                            offset="5%"
-                            stopColor="#ef4444"
-                            stopOpacity={0.2}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#ef4444"
-                            stopOpacity={0}
-                          />
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} /><stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="minG" x1="0" y1="0" x2="0" y2="1">
-                          <stop
-                            offset="5%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0.2}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0}
-                          />
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="#f1f5f9"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => `${v}°`}
-                      />
-                      <Tooltip formatter={(v: any) => `${v}°C`} />
-                      <Area
-                        type="monotone"
-                        dataKey="maxTemp"
-                        name="Max Temp"
-                        stroke="#ef4444"
-                        fill="url(#maxG)"
-                        strokeWidth={2.5}
-                        dot={{ fill: "#ef4444", r: 3 }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="minTemp"
-                        name="Min Temp"
-                        stroke="#3b82f6"
-                        fill="url(#minG)"
-                        strokeWidth={2.5}
-                        dot={{ fill: "#3b82f6", r: 3 }}
-                      />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={v => `${v}°`} />
+                      <Tooltip formatter={(v: number) => `${v}°C`} />
+                      <Area type="monotone" dataKey="maxTemp" name="Max Temp" stroke="#ef4444" fill="url(#maxG)" strokeWidth={2.5} dot={{ fill: "#ef4444", r: 3 }} />
+                      <Area type="monotone" dataKey="minTemp" name="Min Temp" stroke="#3b82f6" fill="url(#minG)" strokeWidth={2.5} dot={{ fill: "#3b82f6", r: 3 }} />
                     </AreaChart>
                   </ResponsiveContainer>
-                    </div>
-
-                    {/* Humidity chart */}
-                    <div>
-                  <p className="text-sm font-semibold text-slate-900 mb-4">
-                    Monthly Max Humidity (%)
-                  </p>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={climateRows} barSize={28}>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="#f1f5f9"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => `${v}%`}
-                        domain={[0, 100]}
-                      />
-                      <Tooltip formatter={(v: any) => `${v}%`} />
-                      <Bar
-                        dataKey="humidity"
-                        name="Humidity"
-                        fill="#8b5cf6"
-                        radius={[4, 4, 0, 0]}
-                      >
-                        {climateRows.map((row, i) => (
-                          <Cell
-                            key={i}
-                            fill={
-                              row.humidity > 70
-                                ? "#7c3aed"
-                                : row.humidity > 50
-                                  ? "#8b5cf6"
-                                  : "#a78bfa"
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                    </div>
-
-                    {/* Growing window analysis */}
-                    <div>
-                  <p className="text-sm font-semibold text-slate-900 mb-3">
-                    Growing Window Analysis
-                  </p>
-                  <div className="grid grid-cols-12 gap-1">
-                    {climateRows.map((row, i) => {
-                      const stress =
-                        row.maxTemp > 38
-                          ? "high"
-                          : row.maxTemp > 32
-                            ? "medium"
-                            : "low";
-                      return (
-                        <div key={i} className="text-center">
-                          <div
-                            className={`h-14 rounded-md flex items-end justify-center pb-1 text-[9px] font-bold text-white ${
-                              stress === "high"
-                                ? "bg-red-400"
-                                : stress === "medium"
-                                  ? "bg-amber-400"
-                                  : "bg-emerald-400"
-                            }`}
-                            title={`${row.month}: ${row.maxTemp}°C max`}
-                          >
-                            {row.maxTemp}°
-                          </div>
-                          <p className="text-[9px] text-slate-500 mt-1">
-                            {row.month}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded bg-emerald-400" />{" "}
-                      Optimal (&lt;32°C)
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded bg-amber-400" /> Stress
-                      (32–38°C)
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded bg-red-400" /> Critical
-                      (&gt;38°C)
-                    </span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-              </>
+              </div>
             ) : (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                <FetchPrompt
-                  onFetch={() => fetchLiveData("climate")}
-                  loading={fetchingData}
-                  icon={
-                    <Thermometer className="w-8 h-8 text-slate-300 mx-auto" />
-                  }
-                  title="Load climate data"
-                  desc="Pull historical temperature and humidity data for this GPS location."
-                />
+                <FetchPrompt onFetch={() => fetchLiveData("climate")} loading={fetchingData}
+                  icon={<Thermometer className="w-8 h-8 text-slate-300 mx-auto" />}
+                  title="Load climate data" desc="Pull historical temperature and humidity data for this GPS location." />
               </div>
             )}
           </div>
-          <div>
-            <NotesPanel
-              notes={notes.filter(
-                (n) => n.category === "climate" || n.category === "general",
-              )}
-              loading={loadingNotes}
-              showAddForm={showAddNote}
-              newNote={{ ...newNote, category: "climate" }}
-              addingNote={addingNote}
-              onShowAdd={() => {
-                setShowAddNote(true);
-                setNewNote((n) => ({ ...n, category: "climate" }));
-              }}
-              onHideAdd={() => setShowAddNote(false)}
-              onChangeNote={setNewNote}
-              onAddNote={addNote}
-              onDelete={deleteNote}
-              onTogglePin={togglePin}
-              filterLabel="Climate notes"
-            />
-          </div>
+          <div><NotesPanel {...notesProps} /></div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          AI CHAT / RESEARCH PANEL
-      ══════════════════════════════════════════════ */}
+      {/* ══ AI CHAT ════════════════════════════════════════════════ */}
       {activePanel === "chat" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 h-[calc(100vh-260px)] min-h-[500px]">
-          {/* Chat window */}
           <div className="lg:col-span-2 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden">
-            {/* Chat header */}
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center gap-3 bg-gradient-to-r from-slate-900 to-slate-800">
-              <div className="w-7 h-7 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                <Brain className="w-4 h-4 text-emerald-400" />
-              </div>
+              <div className="w-7 h-7 bg-emerald-500/20 rounded-lg flex items-center justify-center"><Brain className="w-4 h-4 text-emerald-400" /></div>
               <div>
-                <p className="text-sm font-semibold text-white">
-                  AI Research Assistant
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Aware of project context, market data & your notes
-                </p>
+                <p className="text-sm font-semibold text-white">AI Research Assistant</p>
+                <p className="text-[11px] text-slate-400">Aware of project context, market data & your notes</p>
               </div>
               <div className="ml-auto flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-xs text-emerald-400">Online</span>
               </div>
             </div>
-
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {chatMessages.length === 0 && (
                 <div className="text-center py-8">
                   <Brain className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-slate-700">
-                    Research Assistant Ready
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                    Ask about crop prices, market demand, growing conditions, or
-                    get insight into this specific project.
-                  </p>
+                  <p className="text-sm font-medium text-slate-700">Research Assistant Ready</p>
                   <div className="mt-4 grid grid-cols-1 gap-2 max-w-sm mx-auto">
                     {[
                       `What are current ${project.crop_types?.[0] || "tomato"} prices in ${project.country}?`,
                       `What cooling strategy works best for ${project.region}?`,
                       "What are the biggest risks for this project?",
-                    ].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => setChatInput(suggestion)}
-                        className="text-left text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-colors"
-                      >
-                        {suggestion}
-                      </button>
+                    ].map(s => (
+                      <button key={s} onClick={() => setChatInput(s)}
+                        className="text-left text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-colors">{s}</button>
                     ))}
                   </div>
                 </div>
               )}
               {chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+                <div key={i} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   {msg.role === "assistant" && (
                     <div className="w-7 h-7 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Brain className="w-3.5 h-3.5 text-emerald-700" />
                     </div>
                   )}
-                  <div
-                    className={`max-w-[80%] rounded-xl px-3.5 py-2.5 ${
-                      msg.role === "user"
-                        ? "bg-slate-900 text-white text-sm"
-                        : "bg-slate-50 border border-slate-200"
-                    }`}
-                  >
-                    {msg.role === "assistant" ? (
-                      <MarkdownRenderer content={msg.content} />
-                    ) : (
-                      <p className="text-sm">{msg.content}</p>
-                    )}
+                  <div className={`max-w-[80%] rounded-xl px-3.5 py-2.5 ${msg.role === "user" ? "bg-slate-900 text-white text-sm" : "bg-slate-50 border border-slate-200"}`}>
+                    {msg.role === "assistant" ? <MarkdownRenderer content={msg.content} /> : <p className="text-sm">{msg.content}</p>}
                     {msg.role === "assistant" && (
-                      <button
-                        onClick={() => saveChatAsNote(msg)}
-                        className="mt-2 text-[11px] text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition-colors"
-                      >
+                      <button onClick={() => saveChatAsNote(msg)} className="mt-2 text-[11px] text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition-colors">
                         <BookOpen className="w-3 h-3" /> Save as research note
                       </button>
                     )}
                   </div>
-                  {msg.role === "user" && (
-                    <div className="w-7 h-7 bg-slate-700 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <User className="w-3.5 h-3.5 text-white" />
-                    </div>
-                  )}
                 </div>
               ))}
               {chatLoading && (
@@ -1268,231 +573,79 @@ export function AnalysisTab({
               )}
               <div ref={chatEndRef} />
             </div>
-
-            {/* Input */}
             <div className="p-3 border-t border-slate-100">
               <div className="flex gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && !e.shiftKey && sendChat()
-                  }
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendChat()}
                   placeholder="Ask about crops, markets, climate, risks…"
                   className="flex-1 px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white placeholder:text-slate-400"
-                  disabled={chatLoading}
-                />
-                <Button
-                  onClick={sendChat}
-                  loading={chatLoading}
-                  disabled={!chatInput.trim() || chatLoading}
-                  size="sm"
-                >
+                  disabled={chatLoading} />
+                <Button onClick={sendChat} loading={chatLoading} disabled={!chatInput.trim() || chatLoading} size="sm">
                   <Send className="w-3.5 h-3.5" />
                 </Button>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1.5 px-0.5">
-                Press Enter to send · AI has access to your project data, market
-                research, and saved notes
-              </p>
             </div>
           </div>
-
-          {/* Right: Notes panel */}
-          <div>
-            <NotesPanel
-              notes={notes}
-              loading={loadingNotes}
-              showAddForm={showAddNote}
-              newNote={newNote}
-              addingNote={addingNote}
-              onShowAdd={() => setShowAddNote(true)}
-              onHideAdd={() => setShowAddNote(false)}
-              onChangeNote={setNewNote}
-              onAddNote={addNote}
-              onDelete={deleteNote}
-              onTogglePin={togglePin}
-            />
-          </div>
+          <div><NotesPanel {...notesProps} /></div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Notes Panel ────────────────────────────────────────────────────────
-function NotesPanel({
-  notes,
-  loading,
-  showAddForm,
-  newNote,
-  addingNote,
-  onShowAdd,
-  onHideAdd,
-  onChangeNote,
-  onAddNote,
-  onDelete,
-  onTogglePin,
-  compact,
-  filterLabel,
-}: {
-  notes: ConsultantNote[];
-  loading: boolean;
-  showAddForm: boolean;
-  newNote: {
-    title: string;
-    content: string;
-    category: ConsultantNote["category"];
-  };
-  addingNote: boolean;
-  onShowAdd: () => void;
-  onHideAdd: () => void;
-  onChangeNote: (n: any) => void;
-  onAddNote: () => void;
-  onDelete: (id: string) => void;
-  onTogglePin: (note: ConsultantNote) => void;
-  compact?: boolean;
-  filterLabel?: string;
-}) {
-  const pinned = notes.filter((n) => n.is_pinned);
-  const unpinned = notes.filter((n) => !n.is_pinned);
-
+// ── Sub-components (unchanged from original) ──────────────────────────
+function NotesPanel({ notes, loading, showAddForm, newNote, addingNote, onShowAdd, onHideAdd, onChangeNote, onAddNote, onDelete, onTogglePin, compact, filterLabel }: any) {
+  const pinned = notes.filter((n: any) => n.is_pinned);
+  const unpinned = notes.filter((n: any) => !n.is_pinned);
   return (
     <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
       <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <PenLine className="w-3.5 h-3.5 text-slate-500" />
-          <p className="text-sm font-semibold text-slate-900">
-            {filterLabel || "Research Notes"}
-          </p>
-          {notes.length > 0 && (
-            <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full">
-              {notes.length}
-            </span>
-          )}
+          <p className="text-sm font-semibold text-slate-900">{filterLabel || "Research Notes"}</p>
+          {notes.length > 0 && <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full">{notes.length}</span>}
         </div>
-        <button
-          onClick={onShowAdd}
-          className="flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
-        >
+        <button onClick={onShowAdd} className="flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add
         </button>
       </div>
-
-      {/* Add form */}
       {showAddForm && (
         <div className="p-4 border-b border-slate-100 bg-slate-50/60 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-700">
-              New Research Note
-            </p>
-            <button onClick={onHideAdd}>
-              <X className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
-            </button>
+            <p className="text-xs font-semibold text-slate-700">New Research Note</p>
+            <button onClick={onHideAdd}><X className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" /></button>
           </div>
-          {/* Category pills */}
           <div className="flex flex-wrap gap-1.5">
-            {NOTE_CATEGORIES.map((cat) => (
-              <button
-                key={cat.value}
-                type="button"
-                onClick={() =>
-                  onChangeNote({ ...newNote, category: cat.value })
-                }
-                className={`px-2.5 py-1 rounded-full text-xs border font-medium transition-colors ${
-                  newNote.category === cat.value
-                    ? cat.color
-                    : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
-                }`}
-              >
+            {NOTE_CATEGORIES.map(cat => (
+              <button key={cat.value} type="button" onClick={() => onChangeNote({ ...newNote, category: cat.value })}
+                className={`px-2.5 py-1 rounded-full text-xs border font-medium transition-colors ${newNote.category === cat.value ? cat.color : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
                 {cat.label}
               </button>
             ))}
           </div>
-          <input
-            value={newNote.title}
-            onChange={(e) =>
-              onChangeNote({ ...newNote, title: e.target.value })
-            }
-            placeholder="Note title *"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-          />
-          <textarea
-            rows={3}
-            value={newNote.content}
-            onChange={(e) =>
-              onChangeNote({ ...newNote, content: e.target.value })
-            }
+          <input value={newNote.title} onChange={e => onChangeNote({ ...newNote, title: e.target.value })} placeholder="Note title *"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+          <textarea rows={3} value={newNote.content} onChange={e => onChangeNote({ ...newNote, content: e.target.value })}
             placeholder="Your research insight, pointer, or finding…"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none bg-white"
-          />
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none bg-white" />
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={onAddNote}
-              loading={addingNote}
-              className="flex-1"
-            >
-              <BookOpen className="w-3.5 h-3.5" /> Save Note
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onHideAdd}>
-              Cancel
-            </Button>
+            <Button size="sm" onClick={onAddNote} loading={addingNote} className="flex-1"><BookOpen className="w-3.5 h-3.5" /> Save Note</Button>
+            <Button size="sm" variant="ghost" onClick={onHideAdd}>Cancel</Button>
           </div>
         </div>
       )}
-
-      <div
-        className={`overflow-y-auto ${compact ? "max-h-72" : "max-h-[480px]"}`}
-      >
+      <div className={`overflow-y-auto ${compact ? "max-h-72" : "max-h-[480px]"}`}>
         {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
-          </div>
+          <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>
         ) : notes.length === 0 ? (
           <div className="text-center py-8 px-4">
             <Lightbulb className="w-6 h-6 text-slate-200 mx-auto mb-2" />
-            <p className="text-xs text-slate-500 font-medium">
-              No research notes yet
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Add insights, pointers, and findings.
-            </p>
+            <p className="text-xs text-slate-500 font-medium">No research notes yet</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-50">
-            {pinned.length > 0 && (
-              <div>
-                <p className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Pinned
-                </p>
-                {pinned.map((note) => (
-                  <NoteCard
-                    key={note.id}
-                    note={note}
-                    onDelete={onDelete}
-                    onTogglePin={onTogglePin}
-                  />
-                ))}
-              </div>
-            )}
-            {unpinned.length > 0 && (
-              <div>
-                {pinned.length > 0 && (
-                  <p className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Notes
-                  </p>
-                )}
-                {unpinned.map((note) => (
-                  <NoteCard
-                    key={note.id}
-                    note={note}
-                    onDelete={onDelete}
-                    onTogglePin={onTogglePin}
-                  />
-                ))}
-              </div>
-            )}
+            {pinned.length > 0 && <div><p className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Pinned</p>{pinned.map((note: any) => <NoteCard key={note.id} note={note} onDelete={onDelete} onTogglePin={onTogglePin} />)}</div>}
+            {unpinned.length > 0 && <div>{pinned.length > 0 && <p className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Notes</p>}{unpinned.map((note: any) => <NoteCard key={note.id} note={note} onDelete={onDelete} onTogglePin={onTogglePin} />)}</div>}
           </div>
         )}
       </div>
@@ -1500,271 +653,90 @@ function NotesPanel({
   );
 }
 
-function NoteCard({
-  note,
-  onDelete,
-  onTogglePin,
-}: {
-  note: ConsultantNote;
-  onDelete: (id: string) => void;
-  onTogglePin: (n: ConsultantNote) => void;
-}) {
+function NoteCard({ note, onDelete, onTogglePin }: any) {
   const [expanded, setExpanded] = useState(false);
   const cat = getCategoryStyle(note.category);
   return (
     <div className="px-4 py-3 hover:bg-slate-50/60 transition-colors group">
       <div className="flex items-start gap-2">
-        <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${cat.dot}`}
-        />
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${cat.dot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <button
-              onClick={() => setExpanded((e) => !e)}
-              className="text-left flex-1"
-            >
-              <p className="text-xs font-semibold text-slate-800 leading-snug">
-                {note.title}
-              </p>
+            <button onClick={() => setExpanded(e => !e)} className="text-left flex-1">
+              <p className="text-xs font-semibold text-slate-800 leading-snug">{note.title}</p>
             </button>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-              <button
-                onClick={() => onTogglePin(note)}
-                title={note.is_pinned ? "Unpin" : "Pin"}
-                className={`p-0.5 rounded transition-colors ${note.is_pinned ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}
-              >
-                <Pin className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => onDelete(note.id)}
-                className="p-0.5 rounded text-slate-300 hover:text-red-400 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+              <button onClick={() => onTogglePin(note)} className={`p-0.5 rounded transition-colors ${note.is_pinned ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`}><Pin className="w-3 h-3" /></button>
+              <button onClick={() => onDelete(note.id)} className="p-0.5 rounded text-slate-300 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
             </div>
           </div>
-          <span
-            className={`inline-block text-[10px] px-1.5 py-0.5 rounded border font-medium mt-1 ${cat.color}`}
-          >
-            {cat.label}
-          </span>
-          {expanded && (
-            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed whitespace-pre-wrap">
-              {note.content}
-            </p>
-          )}
-          {!expanded && note.content && (
-            <p className="text-xs text-slate-400 mt-0.5 truncate">
-              {note.content.slice(0, 80)}
-            </p>
-          )}
+          <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border font-medium mt-1 ${cat.color}`}>{cat.label}</span>
+          {expanded && <p className="text-xs text-slate-600 mt-1.5 leading-relaxed whitespace-pre-wrap">{note.content}</p>}
+          {!expanded && note.content && <p className="text-xs text-slate-400 mt-0.5 truncate">{note.content.slice(0, 80)}</p>}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Helper sub-components ─────────────────────────────────────────────
 function EmptyChart({ label }: { label: string }) {
-  return (
-    <div className="h-48 flex flex-col items-center justify-center">
-      <BarChart3 className="w-8 h-8 text-slate-200 mb-2" />
-      <p className="text-xs text-slate-400">{label}</p>
-    </div>
-  );
+  return <div className="h-48 flex flex-col items-center justify-center"><BarChart3 className="w-8 h-8 text-slate-200 mb-2" /><p className="text-xs text-slate-400">{label}</p></div>;
 }
 
-function FetchPrompt({
-  onFetch,
-  loading,
-  icon,
-  title,
-  desc,
-}: {
-  onFetch: () => void;
-  loading: boolean;
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
+function FetchPrompt({ onFetch, loading, icon, title, desc }: any) {
   return (
     <div className="text-center py-8 px-4">
       <div className="mb-3">{icon}</div>
       <p className="text-sm font-medium text-slate-700">{title}</p>
       <p className="text-xs text-slate-400 mt-1 mb-4">{desc}</p>
-      <Button size="sm" variant="secondary" onClick={onFetch} loading={loading}>
-        <RefreshCw className="w-3.5 h-3.5" /> Load Data
-      </Button>
+      <Button size="sm" variant="secondary" onClick={onFetch} loading={loading}><RefreshCw className="w-3.5 h-3.5" /> Load Data</Button>
     </div>
   );
 }
 
-function GenerateReportCard({
-  project,
-  onGenerate,
-  loading,
-  onFetchData,
-  fetchingData,
-  hasData,
-  notesCount,
-  hasSubmissions,
-}: {
-  project: Project;
-  onGenerate: () => void;
-  loading: boolean;
-  onFetchData: () => void;
-  fetchingData: boolean;
-  hasData: boolean;
-  notesCount: number;
-  hasSubmissions: boolean;
-}) {
-  const hasQ = hasSubmissions;
+function GenerateReportCard({ project, onGenerate, loading, onFetchData, fetchingData, hasData, notesCount, hasSubmissions }: any) {
   return (
     <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white h-full flex flex-col">
       <div className="flex items-center gap-2.5 mb-4">
-        <div className="w-9 h-9 bg-emerald-500/20 rounded-xl flex items-center justify-center">
-          <Zap className="w-5 h-5 text-emerald-400" />
-        </div>
-        <div>
-          <p className="text-sm font-bold">Analysis Ready</p>
-          <p className="text-xs text-slate-400">Questionnaire data collected</p>
-        </div>
+        <div className="w-9 h-9 bg-emerald-500/20 rounded-xl flex items-center justify-center"><Zap className="w-5 h-5 text-emerald-400" /></div>
+        <div><p className="text-sm font-bold">Analysis Ready</p><p className="text-xs text-slate-400">Questionnaire data collected</p></div>
       </div>
-      <p className="text-xs text-slate-300 leading-relaxed mb-5">
-        The AI will run technical feasibility, climate risk analysis, and
-        financial projections using the questionnaire data
-        {hasData ? ", live market research" : ""}
-        {notesCount > 0
-          ? `, and your ${notesCount} research note${notesCount > 1 ? "s" : ""}`
-          : ""}
-        .
-      </p>
       <div className="space-y-2 mb-5">
         {[
-          {
-            label: "Market & climate data",
-            done: hasData,
-            action: onFetchData,
-            actionLabel: "Load Now",
-            loading: fetchingData,
-          },
-          {
-            label: "Questionnaire submitted",
-            done: hasSubmissions,
-            action: null,
-            actionLabel: null,
-            loading: false,
-          },
-          {
-            label: `Consultant notes (${notesCount})`,
-            done: notesCount > 0,
-            action: null,
-            actionLabel: null,
-            loading: false,
-          },
+          { label: "Market & climate data", done: hasData, action: onFetchData, actionLabel: "Load Now", loading: fetchingData },
+          { label: "Questionnaire submitted", done: hasSubmissions, action: null, actionLabel: null, loading: false },
+          { label: `Consultant notes (${notesCount})`, done: notesCount > 0, action: null, actionLabel: null, loading: false },
         ].map(({ label, done, action, actionLabel, loading: itemLoading }) => (
           <div key={label} className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {done ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <div className="w-3.5 h-3.5 rounded-full border border-slate-600" />
-              )}
-              <span
-                className={`text-xs ${done ? "text-slate-300" : "text-slate-500"}`}
-              >
-                {label}
-              </span>
+              {done ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <div className="w-3.5 h-3.5 rounded-full border border-slate-600" />}
+              <span className={`text-xs ${done ? "text-slate-300" : "text-slate-500"}`}>{label}</span>
             </div>
-            {action && !done && (
-              <button
-                onClick={action}
-                disabled={itemLoading}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium disabled:opacity-50"
-              >
-                {itemLoading ? "Loading…" : actionLabel}
-              </button>
-            )}
+            {action && !done && <button onClick={action} disabled={itemLoading} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium disabled:opacity-50">{itemLoading ? "Loading…" : actionLabel}</button>}
           </div>
         ))}
       </div>
-      <Button
-        onClick={onGenerate}
-        loading={loading}
-        disabled={!hasSubmissions}
-        className="mt-auto bg-emerald-600 hover:bg-emerald-500 border-emerald-500 w-full"
-      >
+      <Button onClick={onGenerate} loading={loading} disabled={!hasSubmissions} className="mt-auto bg-emerald-600 hover:bg-emerald-500 border-emerald-500 w-full">
         <Zap className="w-4 h-4" /> {hasSubmissions ? "Generate Full Report & Analysis" : "Awaiting Questionnaire Data"}
       </Button>
     </div>
   );
 }
 
-function QuickActions({
-  hasData,
-  fetchingData,
-  onFetchData,
-  onOpenChat,
-  onOpenMarket,
-  notesCount,
-  chatCount,
-}: {
-  hasData: boolean;
-  fetchingData: boolean;
-  onFetchData: () => void;
-  onOpenChat: () => void;
-  onOpenMarket: () => void;
-  notesCount: number;
-  chatCount: number;
-}) {
+function QuickActions({ hasData, fetchingData, onFetchData, onOpenChat, onOpenMarket, onOpenFinancial, notesCount, chatCount, hasFinancialOverride }: any) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5">
-      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-        Quick Actions
-      </p>
+      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Quick Actions</p>
       {[
-        {
-          icon: Globe,
-          label: hasData ? "Refresh market data" : "Load market & climate data",
-          sub: hasData ? "Update from live sources" : "Tavily + Open-Meteo",
-          onClick: onFetchData,
-          loading: fetchingData,
-          color: "bg-blue-50 text-blue-600",
-        },
-        {
-          icon: Brain,
-          label: "AI Research Assistant",
-          sub:
-            chatCount > 0
-              ? `${chatCount} messages`
-              : "Ask questions about this project",
-          onClick: onOpenChat,
-          loading: false,
-          color: "bg-emerald-50 text-emerald-600",
-        },
-        {
-          icon: Activity,
-          label: "Market analysis",
-          sub: "View full market research",
-          onClick: onOpenMarket,
-          loading: false,
-          color: "bg-purple-50 text-purple-600",
-        },
+        { icon: TableProperties, label: hasFinancialOverride ? "Edit financial model" : "Review financial model", sub: hasFinancialOverride ? "Consultant override active" : "View & correct AI-generated figures", onClick: onOpenFinancial, loading: false, color: "bg-emerald-50 text-emerald-600" },
+        { icon: Globe, label: hasData ? "Refresh market data" : "Load market & climate data", sub: hasData ? "Update from live sources" : "Tavily + Open-Meteo", onClick: onFetchData, loading: fetchingData, color: "bg-blue-50 text-blue-600" },
+        { icon: Brain, label: "AI Research Assistant", sub: chatCount > 0 ? `${chatCount} messages` : "Ask questions about this project", onClick: onOpenChat, loading: false, color: "bg-emerald-50 text-emerald-600" },
+        { icon: Activity, label: "Market analysis", sub: "View full market research", onClick: onOpenMarket, loading: false, color: "bg-purple-50 text-purple-600" },
       ].map(({ icon: Icon, label, sub, onClick, loading, color }) => (
-        <button
-          key={label}
-          onClick={onClick}
-          disabled={loading}
-          className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all text-left disabled:opacity-50"
-        >
-          <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Icon className="w-4 h-4" />
-            )}
+        <button key={label} onClick={onClick} disabled={loading}
+          className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all text-left disabled:opacity-50">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}
           </div>
           <div>
             <p className="text-xs font-medium text-slate-800">{label}</p>
