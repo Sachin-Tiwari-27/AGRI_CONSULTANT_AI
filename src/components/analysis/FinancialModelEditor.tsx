@@ -107,16 +107,16 @@ function Section({
   )
 }
 
+const DEFAULT_MODEL: FinancialModel = {
+  capex_total: 0, pre_startup_cost: 0, crops: [],
+  agro_tourism_revenue: 0, total_annual_revenue: 0,
+  growing_cost_annual: 0, manpower_cost_annual: 0,
+  ebitda: 0, ebitda_margin: 0, payback_years: 0, assumptions: [],
+}
+
 // ── Main component ────────────────────────────────────────────────────
 export function FinancialModelEditor({ projectId, currency, initialModel, initialNotes, source, onSaved }: Props) {
-  const [model, setModel] = useState<FinancialModel>(
-    initialModel ?? {
-      capex_total: 0, pre_startup_cost: 0, crops: [],
-      agro_tourism_revenue: 0, total_annual_revenue: 0,
-      growing_cost_annual: 0, manpower_cost_annual: 0,
-      ebitda: 0, ebitda_margin: 0, payback_years: 0, assumptions: [],
-    }
-  )
+  const [model, setModel] = useState<FinancialModel>(initialModel ?? DEFAULT_MODEL)
   const [notes, setNotes] = useState(initialNotes)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -442,7 +442,7 @@ export function FinancialModelEditor({ projectId, currency, initialModel, initia
               size="sm"
               variant="ghost"
               onClick={() => {
-                setModel(initialModel ?? model)
+                setModel(initialModel ?? DEFAULT_MODEL)
                 setNotes(initialNotes)
                 setDirty(false)
               }}
