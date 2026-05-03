@@ -6,14 +6,14 @@ import { QuestionnaireTab } from "@/components/project/tabs/QuestionnaireTab";
 import { AnalysisTab } from "@/components/project/tabs/AnalysisTab";
 import { ReportTab } from "@/components/project/tabs/ReportTab";
 import { LogTab } from "@/components/project/tabs/LogTab";
+import { ArtifactsTab } from "@/components/project/tabs/ArtifactsTab";
 import { QuestionnairePreviewModal } from "@/components/questionnaire/QuestionnairePreviewModal";
-import { StatusBadge } from "@/components/ui/Card";
 import type {
   Project, Report, AIFlag, ReportSectionKey,
   QuestionnaireTemplate, PersonalisationDiff,
 } from "@/types";
 
-// Default base template — used when no custom template exists
+// Default base template
 const DEFAULT_TEMPLATE: QuestionnaireTemplate = {
   id: 'default',
   consultant_id: '',
@@ -51,31 +51,25 @@ const DEFAULT_TEMPLATE: QuestionnaireTemplate = {
   created_at: new Date().toISOString(),
 }
 
-type TabId = "overview" | "questionnaire" | "analysis" | "report" | "log";
+type TabId = "overview" | "questionnaire" | "analysis" | "report" | "artifacts" | "log";
 
 interface Submission {
-  id: string;
-  round: number;
-  submitted_at: string | null;
-  token: string;
-  answers: Record<string, unknown>;
+  id: string; round: number; submitted_at: string | null; token: string; answers: Record<string, unknown>;
 }
 
 interface Props {
-  project: Project & {
-    questionnaire_submissions: Submission[];
-    ai_flags: AIFlag[];
-  };
+  project: Project & { questionnaire_submissions: Submission[]; ai_flags: AIFlag[] };
   report: Report | null;
   userId: string;
 }
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
+  { id: "overview",      label: "Overview" },
   { id: "questionnaire", label: "Questionnaire" },
-  { id: "analysis", label: "Analysis" },
-  { id: "report", label: "Report" },
-  { id: "log", label: "Activity log" },
+  { id: "analysis",      label: "Analysis" },
+  { id: "report",        label: "Report" },
+  { id: "artifacts",     label: "Artifacts" },
+  { id: "log",           label: "Activity log" },
 ];
 
 export function ProjectWorkspace({ project: initial, report: initialReport, userId }: Props) {
@@ -85,7 +79,6 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   const [loading, setLoading] = useState<string | null>(null);
   const [flags, setFlags] = useState<AIFlag[]>(initial.ai_flags || []);
 
-  // Questionnaire preview modal state
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<QuestionnaireTemplate | null>(null);
   const [previewDiff, setPreviewDiff] = useState<PersonalisationDiff | null>(null);
@@ -99,21 +92,21 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   const acceptedFlags = flags.filter(f => f.status === "accepted");
   const currency = (project as any).currency || "USD";
 
-  // ── Send questionnaire (two-step with preview) ───────────────────
+  async function refreshProject() {
+    const pRes = await fetch(`/api/projects/${project.id}`);
+    if (pRes.ok) setProject(await pRes.json());
+  }
+
   async function sendQuestionnaire() {
     setLoading("send_q");
     try {
-      // 1. Determine round
       const round = submissions.length > 0
         ? Math.max(...submissions.map(s => s.round)) + 1
         : 1;
 
-      // Only round 1 needs preview; follow-ups use the followup flow
       if (round > 1) {
-        // Fallback: direct send for re-sends of existing submissions
         const res = await fetch("/api/questionnaire/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: project.id, templateId: null, round: 1 }),
         });
         const data = await res.json();
@@ -124,27 +117,18 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
         return;
       }
 
-      // 2. Try AI personalisation (non-blocking — falls back to base template)
       let diff: PersonalisationDiff | null = null;
       const callBrief = (project as any).call_brief;
-
       if (callBrief) {
         try {
           const pRes = await fetch("/api/questionnaire/personalize", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ projectId: project.id, template: DEFAULT_TEMPLATE }),
           });
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            diff = pData.diff || null;
-          }
-        } catch {
-          // Non-fatal — proceed with base template
-        }
+          if (pRes.ok) { const pData = await pRes.json(); diff = pData.diff || null; }
+        } catch {}
       }
 
-      // 3. Open preview modal
       setPreviewTemplate(DEFAULT_TEMPLATE);
       setPreviewDiff(diff);
       setPreviewRound(round);
@@ -156,27 +140,17 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     }
   }
 
-  async function refreshProject() {
-    const pRes = await fetch(`/api/projects/${project.id}`);
-    if (pRes.ok) {
-      const updated = await pRes.json();
-      setProject(updated);
-    }
-  }
-
   async function handlePreviewSent() {
     setPreviewOpen(false);
     await refreshProject();
     toast.success(`Questionnaire sent to ${project.client_email}`);
   }
 
-  // ── Upload transcript ─────────────────────────────────────────────
   async function uploadTranscript(text: string) {
     setLoading("transcript");
     try {
       const res = await fetch("/api/ai/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, text }),
       });
       const data = await res.json();
@@ -185,35 +159,28 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       toast.success("Transcript analysed — call brief extracted");
     } catch (e: any) {
       toast.error(e.message || "Failed to process transcript");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  // ── AI gap check ──────────────────────────────────────────────────
   async function runClarificationCheck() {
     if (!latestSubmission) return;
     setLoading("clarify");
     try {
       const res = await fetch("/api/ai/clarify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, submissionId: latestSubmission.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Check failed");
       setFlags(prev => {
         const existingIds = new Set(prev.map(f => f.id));
-        const newFlags = (data.flags || []).filter((f: AIFlag) => !existingIds.has(f.id));
-        return [...prev, ...newFlags];
+        return [...prev, ...(data.flags || []).filter((f: AIFlag) => !existingIds.has(f.id))];
       });
       toast.success(`Gap check complete — ${data.flags?.length || 0} potential gaps found`);
       setActiveTab("questionnaire");
     } catch (e: any) {
       toast.error(e.message || "Gap check failed");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function sendFollowUp() {
@@ -221,8 +188,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading("followup");
     try {
       const res = await fetch("/api/questionnaire/followup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, acceptedFlags }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
@@ -230,9 +196,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       toast.success(`Follow-up sent to ${project.client_email} with ${acceptedFlags.length} question(s)`);
     } catch (e: any) {
       toast.error(e.message || "Failed to send follow-up");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function generateReport(specificSection?: ReportSectionKey) {
@@ -241,8 +205,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading(loadingKey);
     try {
       const res = await fetch("/api/report/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, sectionsToGenerate: specificSection ? [specificSection] : undefined }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.details || err.error || "Generation failed"); }
@@ -254,9 +217,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       if (!specificSection) toast.success("Report draft generated — review sections in the Report tab");
     } catch (e: any) {
       toast.error(e.message || "Report generation failed");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function acceptFlag(flagId: string) {
@@ -297,8 +258,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading("add_gap");
     try {
       const res = await fetch("/api/ai/flags", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, submissionId: latestSubmission?.id, ...gap }),
       });
       const data = await res.json();
@@ -310,7 +270,6 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     finally { setLoading(null); }
   }
 
-  // ── Tab gating ────────────────────────────────────────────────────
   const analysisEnabled = !!(latestSubmission || report);
   const reportEnabled = !!(latestSubmission || report);
 
@@ -324,7 +283,6 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     <>
       <ToastProvider />
 
-      {/* Questionnaire preview modal */}
       {previewOpen && previewTemplate && (
         <QuestionnairePreviewModal
           projectId={project.id}
@@ -338,21 +296,20 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
 
       <div className="px-8 py-6">
         {/* Tab bar */}
-        <div className="flex gap-1 border-b border-slate-200 mb-6">
+        <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
           {TABS.map(tab => {
             const disabled =
               (tab.id === "analysis" && !analysisEnabled) ||
               (tab.id === "report" && !reportEnabled);
             const badge =
               tab.id === "questionnaire" && pendingFlags.length > 0
-                ? pendingFlags.length
-                : undefined;
+                ? pendingFlags.length : undefined;
             return (
               <button
                 key={tab.id}
                 onClick={() => !disabled && navigateTo(tab.id)}
                 disabled={disabled}
-                className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors flex items-center gap-2 ${
+                className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                   disabled
                     ? "opacity-40 cursor-not-allowed border-transparent text-slate-400"
                     : activeTab === tab.id
@@ -371,20 +328,13 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
           })}
         </div>
 
-        {/* Tab content */}
         {activeTab === "overview" && (
           <OverviewTab
-            project={project}
-            report={report}
-            hasSubmission={!!latestSubmission}
-            pendingFlagsCount={pendingFlags.length}
-            acceptedFlagsCount={acceptedFlags.length}
-            loading={loading}
-            onSendQuestionnaire={sendQuestionnaire}
-            onRunClarify={runClarificationCheck}
-            onSendFollowUp={sendFollowUp}
-            onGenerateReport={generateReport}
-            onUploadTranscript={uploadTranscript}
+            project={project} report={report} hasSubmission={!!latestSubmission}
+            pendingFlagsCount={pendingFlags.length} acceptedFlagsCount={acceptedFlags.length}
+            loading={loading} onSendQuestionnaire={sendQuestionnaire}
+            onRunClarify={runClarificationCheck} onSendFollowUp={sendFollowUp}
+            onGenerateReport={generateReport} onUploadTranscript={uploadTranscript}
             onScheduled={link => setProject(p => ({ ...p, meet_link: link, status: "call_scheduled" }))}
             onNavigate={navigateTo}
           />
@@ -392,39 +342,29 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
 
         {activeTab === "questionnaire" && (
           <QuestionnaireTab
-            project={project}
-            submissions={submissions}
-            flags={flags}
-            loading={loading}
-            onSendQuestionnaire={sendQuestionnaire}
-            onRunClarify={runClarificationCheck}
-            onSendFollowUp={sendFollowUp}
-            onAcceptFlag={acceptFlag}
-            onDismissFlag={dismissFlag}
-            onDeleteFlag={deleteFlag}
-            onAddFlag={addFlag}
+            project={project} submissions={submissions} flags={flags} loading={loading}
+            onSendQuestionnaire={sendQuestionnaire} onRunClarify={runClarificationCheck}
+            onSendFollowUp={sendFollowUp} onAcceptFlag={acceptFlag}
+            onDismissFlag={dismissFlag} onDeleteFlag={deleteFlag} onAddFlag={addFlag}
           />
         )}
 
         {activeTab === "analysis" && (
           <AnalysisTab
-            project={project}
-            report={report}
-            currency={currency}
-            onGenerateReport={() => generateReport()}
-            loadingReport={loading === "report"}
+            project={project} report={report} currency={currency}
+            onGenerateReport={() => generateReport()} loadingReport={loading === "report"}
           />
         )}
 
         {activeTab === "report" && (
           <ReportTab
-            project={project}
-            report={report}
-            hasSubmission={!!latestSubmission}
-            loading={loading}
-            onGenerateReport={generateReport}
-            onUpdateReport={setReport}
+            project={project} report={report} hasSubmission={!!latestSubmission}
+            loading={loading} onGenerateReport={generateReport} onUpdateReport={setReport}
           />
+        )}
+
+        {activeTab === "artifacts" && (
+          <ArtifactsTab projectId={project.id} />
         )}
 
         {activeTab === "log" && (
