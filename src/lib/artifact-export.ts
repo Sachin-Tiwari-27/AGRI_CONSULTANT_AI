@@ -29,12 +29,50 @@ function downloadBlob(content: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
-function sanitize(val: unknown): string {
-  if (val === null || val === undefined) return '—'
-  if (typeof val === 'boolean') return val ? 'Yes' : 'No'
-  if (Array.isArray(val)) return val.join(', ')
-  if (typeof val === 'object') return JSON.stringify(val)
-  return String(val)
+/**
+ * Escapes HTML special characters to prevent HTML injection in DOCX (HTML wrapper).
+ */
+function esc(str: unknown): string {
+  if (str === null || str === undefined) return ''
+  const s = String(str)
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+/**
+ * Prefixes sensitive characters with a single quote to prevent formula injection in Excel/TSV.
+ * Neutralizes values starting with =, +, -, or @.
+ */
+function safeExcel(val: unknown): string {
+  const s = String(val ?? '')
+  if (!s) return s
+  if (['=', '+', '-', '@'].includes(s[0])) {
+    return "'" + s
+  }
+  return s
+}
+
+function sanitize(val: unknown, mode?: 'html' | 'excel'): string {
+  let res: string
+  if (val === null || val === undefined) res = '—'
+  else if (typeof val === 'boolean') res = val ? 'Yes' : 'No'
+  else if (Array.isArray(val)) res = val.join(', ')
+  else if (typeof val === 'object') {
+    try {
+      res = JSON.stringify(val)
+    } catch {
+      res = String(val)
+    }
+  }
+  else res = String(val)
+
+  if (mode === 'html') return esc(res)
+  if (mode === 'excel') return safeExcel(res)
+  return res
 }
 
 function currency(amount: number, cur = 'USD'): string {
@@ -42,7 +80,11 @@ function currency(amount: number, cur = 'USD'): string {
 }
 
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso))
+  try {
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso))
+  } catch {
+    return 'Invalid Date'
+  }
 }
 
 // ── QUESTION LABELS (mirrors QuestionnaireTab) ────────────────────────
@@ -232,8 +274,8 @@ export function exportQuestionnaireDocx(
   clientEmail: string,
 ) {
   let body = `
-    <h1>${projectTitle}</h1>
-    <p class="meta">Client: ${clientName} (${clientEmail}) &nbsp;|&nbsp; Exported: ${new Date().toLocaleString('en-GB')}</p>
+    <h1>${esc(projectTitle)}</h1>
+    <p class="meta">Client: ${esc(clientName)} (${esc(clientEmail)}) &nbsp;|&nbsp; Exported: ${new Date().toLocaleString('en-GB')}</p>
     <hr class="divider"/>
   `
 
@@ -242,7 +284,7 @@ export function exportQuestionnaireDocx(
     body += `<table><thead><tr><th style="width:40%">Question</th><th>Answer</th></tr></thead><tbody>`
     for (const [key, val] of Object.entries(sub.answers || {})) {
       const label = QUESTION_LABELS[key] || key
-      body += `<tr><td class="label">${label}</td><td>${sanitize(val)}</td></tr>`
+      body += `<tr><td class="label">${esc(label)}</td><td>${sanitize(val, 'html')}</td></tr>`
     }
     body += `</tbody></table>`
   }
@@ -260,14 +302,14 @@ export function exportCallNotesDocx(
   projectTitle: string,
 ) {
   let body = `
-    <h1>${projectTitle} — Call Notes &amp; Brief</h1>
+    <h1>${esc(projectTitle)} — Call Notes &amp; Brief</h1>
     <p class="meta">Exported: ${new Date().toLocaleString('en-GB')}</p>
     <hr class="divider"/>
   `
 
   if (consultantNotes) {
     body += `<h2>Consultant Call Notes</h2>`
-    body += `<p>${consultantNotes.replace(/\n/g, '<br/>')}</p>`
+    body += `<p>${esc(consultantNotes).replace(/\n/g, '<br/>')}</p>`
     body += `<hr class="divider"/>`
   }
 
@@ -285,14 +327,14 @@ export function exportCallNotesDocx(
     ]
     for (const [label, val] of fields) {
       if (val !== undefined && val !== null && val !== '') {
-        body += `<tr><td class="label" style="width:35%">${label}</td><td>${sanitize(val)}</td></tr>`
+        body += `<tr><td class="label" style="width:35%">${esc(label)}</td><td>${sanitize(val, 'html')}</td></tr>`
       }
     }
     body += `</tbody></table>`
 
     if (callBrief.key_concerns?.length) {
       body += `<h3>Key Concerns</h3><ul>`
-      for (const c of callBrief.key_concerns) body += `<li>${c}</li>`
+      for (const c of callBrief.key_concerns) body += `<li>${esc(c)}</li>`
       body += `</ul>`
     }
   }
@@ -311,7 +353,7 @@ export function exportResearchDocx(
   projectTitle: string,
 ) {
   let body = `
-    <h1>${projectTitle} — Research Data</h1>
+    <h1>${esc(projectTitle)} — Research Data</h1>
     <p class="meta">Exported: ${new Date().toLocaleString('en-GB')}</p>
     <hr class="divider"/>
   `
@@ -319,20 +361,21 @@ export function exportResearchDocx(
   if (consultantNotes.length) {
     body += `<h2>Consultant Research Notes</h2>`
     for (const note of consultantNotes) {
-      body += `<h3>[${note.category.toUpperCase()}] ${note.title}</h3>`
+      body += `<h3>[${esc(note.category.toUpperCase())}] ${esc(note.title)}</h3>`
       body += `<p class="meta">Added: ${formatDate(note.created_at)}</p>`
-      body += `<p>${note.content.replace(/\n/g, '<br/>')}</p>`
+      body += `<p>${esc(note.content).replace(/\n/g, '<br/>')}</p>`
     }
     body += `<hr class="divider"/>`
   }
 
   if (marketResearch) {
     body += `<h2>Market Research</h2>`
-    // Convert markdown tables to HTML tables
-    const converted = marketResearch
+    // Convert markdown basics to HTML, escaping the rest
+    const converted = esc(marketResearch)
       .replace(/^#{1,6}\s(.+)$/gm, '<h3>$1</h3>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br/>')
     body += `<p>${converted}</p>`
     body += `<hr class="divider"/>`
   }
@@ -344,14 +387,14 @@ export function exportResearchDocx(
     if (rows.length > 1) {
       body += `<table><thead>`
       const headers = rows[0].split('|').map(c => c.trim()).filter(Boolean)
-      body += `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`
+      body += `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>`
       for (const row of rows.slice(1)) {
         const cells = row.split('|').map(c => c.trim()).filter(Boolean)
-        body += `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
+        body += `<tr>${cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`
       }
       body += `</tbody></table>`
     } else {
-      body += `<pre>${climateData}</pre>`
+      body += `<pre>${esc(climateData)}</pre>`
     }
   }
 
@@ -491,7 +534,9 @@ export function exportFinancialModelXlsx(
     rows.push([notes])
   }
 
-  const tsv = rows.map(r => r.join('\t')).join('\n')
+  const tsv = rows
+    .map(r => r.map(c => sanitize(c, 'excel')).join('\t'))
+    .join('\n')
   downloadBlob(tsv, `${projectTitle}-financial-model.xlsx`, 'application/vnd.ms-excel')
 }
 
@@ -502,13 +547,13 @@ export function exportFinancialModelDocx(
   cur: string,
 ) {
   let body = `
-    <h1>${projectTitle} — Financial Model</h1>
-    <p class="meta">Currency: ${cur} &nbsp;|&nbsp; Exported: ${new Date().toLocaleString('en-GB')}</p>
+    <h1>${esc(projectTitle)} — Financial Model</h1>
+    <p class="meta">Currency: ${esc(cur)} &nbsp;|&nbsp; Exported: ${new Date().toLocaleString('en-GB')}</p>
     <hr class="divider"/>
   `
 
   body += `<h2>Capital Investment</h2>`
-  body += `<table><thead><tr><th>Item</th><th>Amount (${cur})</th></tr></thead><tbody>`
+  body += `<table><thead><tr><th>Item</th><th>Amount (${esc(cur)})</th></tr></thead><tbody>`
   body += `<tr><td>CAPEX</td><td>${currency(model.capex_total, cur)}</td></tr>`
   body += `<tr><td>Pre-startup cost</td><td>${currency(model.pre_startup_cost, cur)}</td></tr>`
   body += `<tr><td><strong>Total Investment</strong></td><td><strong>${currency(model.capex_total + model.pre_startup_cost, cur)}</strong></td></tr>`
@@ -518,10 +563,10 @@ export function exportFinancialModelDocx(
   body += `<table><thead><tr><th>Crop</th><th>Area (sqm)</th><th>Yield (t/yr)</th><th>Price/kg</th><th>Annual Revenue</th></tr></thead><tbody>`
   for (const crop of model.crops) {
     body += `<tr>
-      <td>${crop.name}</td>
+      <td>${esc(crop.name)}</td>
       <td>${crop.area_sqm.toLocaleString()}</td>
       <td>${crop.yield_tonnes}</td>
-      <td>${cur} ${crop.price_per_kg}</td>
+      <td>${esc(cur)} ${crop.price_per_kg}</td>
       <td>${currency(crop.annual_revenue, cur)}</td>
     </tr>`
   }
@@ -541,18 +586,18 @@ export function exportFinancialModelDocx(
     ['Payback Period', `${model.payback_years} years`],
   ]
   for (const [label, val] of summary) {
-    body += `<tr><td class="label" style="width:45%">${label}</td><td>${val}</td></tr>`
+    body += `<tr><td class="label" style="width:45%">${esc(label)}</td><td>${val}</td></tr>`
   }
   body += `</tbody></table>`
 
   if (model.assumptions?.length) {
     body += `<h2>Assumptions</h2><ul>`
-    for (const a of model.assumptions) body += `<li>${a}</li>`
+    for (const a of model.assumptions) body += `<li>${esc(a)}</li>`
     body += `</ul>`
   }
 
   if (notes) {
-    body += `<h2>Consultant Notes</h2><p>${notes.replace(/\n/g, '<br/>')}</p>`
+    body += `<h2>Consultant Notes</h2><p>${esc(notes).replace(/\n/g, '<br/>')}</p>`
   }
 
   downloadBlob(
