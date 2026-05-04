@@ -134,8 +134,18 @@ export function ReportEditor({ report, project, projectId, onUpdate, onProjectUp
         body: JSON.stringify({ projectId }),
       });
       if (!res.ok) throw new Error("Failed to publish");
+      
+      const data = await res.json();
+      
       onUpdate({ ...report, status: "published" });
-      onProjectUpdate({ status: "report_published" });
+      onProjectUpdate({ 
+        status: data.status || "report_published",
+        payment_collected: data.payment_collected
+      } as any);
+
+      if (data.warnings?.length > 0) {
+        alert(data.warnings.join("\n"));
+      }
     } catch {
       alert("Failed to publish report. Please check your connection.");
     } finally {
