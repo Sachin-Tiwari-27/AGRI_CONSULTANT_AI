@@ -21,7 +21,9 @@ function detectCurrency(country?: string): string {
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
@@ -61,14 +63,24 @@ export async function POST(req: NextRequest) {
 
   const aiResponse = await callAIJSON<ClarificationFlag[]>(request);
   await logAIUsage(
-    { content: "", tokensUsed: 0, model: "", provider: "openrouter", durationMs: 0 },
+    {
+      content: "",
+      tokensUsed: 0,
+      model: "",
+      provider: "openrouter",
+      durationMs: 0,
+    },
     "clarification_check",
     projectId,
     user.id,
   );
 
-  const requiredCount = aiResponse.filter(f => f.severity === 'required').length;
-  const recommendedCount = aiResponse.filter(f => f.severity === 'recommended').length;
+  const requiredCount = aiResponse.filter(
+    (f) => f.severity === "required",
+  ).length;
+  const recommendedCount = aiResponse.filter(
+    (f) => f.severity === "recommended",
+  ).length;
 
   if (aiResponse.length > 0) {
     const flags = aiResponse.map((f) => ({
@@ -92,9 +104,9 @@ export async function POST(req: NextRequest) {
     // Log project event
     await logProjectEvent(supabase, {
       projectId,
-      eventType: 'ai_gap_check',
-      actor: 'ai',
-      title: `AI gap check completed — ${aiResponse.length} gap${aiResponse.length !== 1 ? 's' : ''} found`,
+      eventType: "ai_gap_check",
+      actor: "ai",
+      title: `AI gap check completed — ${aiResponse.length} gap${aiResponse.length !== 1 ? "s" : ""} found`,
       detail: `${requiredCount} required · ${recommendedCount} recommended`,
       metadata: {
         flags_total: aiResponse.length,
@@ -110,10 +122,10 @@ export async function POST(req: NextRequest) {
   // Log even when no gaps found
   await logProjectEvent(supabase, {
     projectId,
-    eventType: 'ai_gap_check',
-    actor: 'ai',
-    title: 'AI gap check completed — no gaps found',
-    detail: 'All questionnaire answers look complete',
+    eventType: "ai_gap_check",
+    actor: "ai",
+    title: "AI gap check completed — no gaps found",
+    detail: "All questionnaire answers look complete",
     metadata: { flags_total: 0, submission_id: submissionId },
   });
 

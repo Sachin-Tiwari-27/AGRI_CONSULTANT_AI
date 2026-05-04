@@ -13,10 +13,8 @@ import type {
   QuestionnaireTemplate, PersonalisationDiff,
 } from "@/types";
 
-// Default base template
 const DEFAULT_TEMPLATE: QuestionnaireTemplate = {
-  id: 'default',
-  consultant_id: '',
+  id: 'default', consultant_id: '',
   name: 'Project Scoping Questionnaire',
   sections: [
     { id: 's1', title: 'Investor & Site Profile', order: 1 },
@@ -28,23 +26,23 @@ const DEFAULT_TEMPLATE: QuestionnaireTemplate = {
     { id: 'q1', section_id: 's1', label: 'Legal entity or company name', type: 'text', required: true, order: 1 },
     { id: 'q2', section_id: 's1', label: 'Primary contact person', type: 'text', required: true, order: 2 },
     { id: 'q3', section_id: 's1', label: 'Email / WhatsApp', type: 'text', required: true, order: 3 },
-    { id: 'q4', section_id: 's1', label: 'GPS coordinates or Google Maps link', type: 'gps', required: true, order: 4, helper_text: 'This allows us to pull accurate climate data for your location' },
+    { id: 'q4', section_id: 's1', label: 'GPS coordinates or Google Maps link', type: 'gps', required: true, order: 4 },
     { id: 'q5', section_id: 's1', label: 'Total land area available (sqm)', type: 'number', required: true, order: 5 },
     { id: 'q6', section_id: 's2', label: 'Primary water source', type: 'select', required: true, order: 1, options: [{ value: 'deep_well', label: 'Deep well' }, { value: 'desalination', label: 'Desalination plant' }, { value: 'tanker', label: 'Water tanker' }, { value: 'government', label: 'Government supply' }] },
     { id: 'q7', section_id: 's2', label: 'Estimated water availability (litres/day)', type: 'number', required: true, order: 2 },
-    { id: 'q8', section_id: 's2', label: 'Water analysis report available?', type: 'boolean', required: true, order: 3, helper_text: 'EC/TDS/pH data is mandatory for hydroponic projects.' },
+    { id: 'q8', section_id: 's2', label: 'Water analysis report available?', type: 'boolean', required: true, order: 3 },
     { id: 'q9', section_id: 's2', label: 'Upload water analysis report (if available)', type: 'file_upload', required: false, order: 4, conditions: [{ question_id: 'q8', operator: 'is_true', value: 'true' }] },
     { id: 'q10', section_id: 's2', label: 'Power source', type: 'select', required: true, order: 5, options: [{ value: 'grid', label: 'Government grid' }, { value: 'generator', label: 'Diesel generator' }, { value: 'solar', label: 'Solar/hybrid' }] },
     { id: 'q11', section_id: 's2', label: 'Available power capacity (KVA)', type: 'number', required: false, order: 6 },
     { id: 'q12', section_id: 's2', label: 'Internet connectivity at site', type: 'select', required: true, order: 7, options: [{ value: '4g_5g', label: '4G / 5G available' }, { value: 'weak', label: 'Weak signal' }, { value: 'none', label: 'No signal' }] },
     { id: 'q13', section_id: 's2', label: 'Can a 40ft container truck reach the site?', type: 'boolean', required: true, order: 8 },
-    { id: 'q14', section_id: 's3', label: 'Target crops', type: 'multiselect', required: true, order: 1, options: [{ value: 'cherry_tomato', label: 'Cherry / Snack Tomatoes' }, { value: 'beef_tomato', label: 'Beef Tomatoes' }, { value: 'capsicum', label: 'Bell Peppers' }, { value: 'cucumber', label: 'Snack Cucumbers' }, { value: 'lettuce', label: 'Leafy Lettuce' }, { value: 'herbs', label: 'Herbs' }, { value: 'strawberry', label: 'Strawberries' }, { value: 'fig', label: 'Figs' }, { value: 'other', label: 'Other' }] },
+    { id: 'q14', section_id: 's3', label: 'Target crops', type: 'multiselect', required: true, order: 1, options: [{ value: 'cherry_tomato', label: 'Cherry Tomatoes' }, { value: 'beef_tomato', label: 'Beef Tomatoes' }, { value: 'capsicum', label: 'Bell Peppers' }, { value: 'cucumber', label: 'Cucumbers' }, { value: 'lettuce', label: 'Lettuce' }, { value: 'herbs', label: 'Herbs' }, { value: 'strawberry', label: 'Strawberries' }, { value: 'fig', label: 'Figs' }, { value: 'other', label: 'Other' }] },
     { id: 'q15', section_id: 's3', label: 'Specify other crops', type: 'text', required: false, order: 2, conditions: [{ question_id: 'q14', operator: 'contains', value: 'other' }] },
-    { id: 'q16', section_id: 's3', label: 'Desired technology level', type: 'select', required: true, order: 3, options: [{ value: 'standard', label: 'Standard — naturally ventilated, manual controls' }, { value: 'advanced', label: 'Advanced — climate sensors, high-pressure fogging' }, { value: 'elite', label: 'Elite — fully automated closed-loop system' }] },
+    { id: 'q16', section_id: 's3', label: 'Desired technology level', type: 'select', required: true, order: 3, options: [{ value: 'standard', label: 'Standard' }, { value: 'advanced', label: 'Advanced' }, { value: 'elite', label: 'Elite' }] },
     { id: 'q17', section_id: 's3', label: 'Is agro-tourism / farm experience planned?', type: 'boolean', required: true, order: 4 },
-    { id: 'q18', section_id: 's4', label: 'Primary target market', type: 'multiselect', required: true, order: 1, options: [{ value: 'local_retail', label: 'Local retail / traders' }, { value: 'supermarkets', label: 'Supermarkets / hypermarkets' }, { value: 'restaurants', label: 'Restaurants & hotels' }, { value: 'export_uae', label: 'Export to UAE' }, { value: 'export_gcc', label: 'Export to GCC' }] },
+    { id: 'q18', section_id: 's4', label: 'Primary target market', type: 'multiselect', required: true, order: 1, options: [{ value: 'local_retail', label: 'Local retail' }, { value: 'supermarkets', label: 'Supermarkets' }, { value: 'restaurants', label: 'Restaurants & hotels' }, { value: 'export_uae', label: 'Export to UAE' }, { value: 'export_gcc', label: 'Export to GCC' }] },
     { id: 'q19', section_id: 's4', label: 'On-site cold storage required?', type: 'boolean', required: true, order: 2 },
-    { id: 'q20', section_id: 's4', label: 'Allocated budget for Phase 1', type: 'text', required: true, order: 3, placeholder: 'e.g. OMR 500,000 or USD 1.3M' },
+    { id: 'q20', section_id: 's4', label: 'Allocated budget for Phase 1', type: 'text', required: true, order: 3 },
     { id: 'q21', section_id: 's4', label: 'Target construction start date', type: 'date', required: false, order: 4 },
     { id: 'q22', section_id: 's4', label: 'Any other information or specific requirements', type: 'textarea', required: false, order: 5 },
   ],
@@ -78,7 +76,6 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [loading, setLoading] = useState<string | null>(null);
   const [flags, setFlags] = useState<AIFlag[]>(initial.ai_flags || []);
-
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<QuestionnaireTemplate | null>(null);
   const [previewDiff, setPreviewDiff] = useState<PersonalisationDiff | null>(null);
@@ -92,6 +89,11 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   const acceptedFlags = flags.filter(f => f.status === "accepted");
   const currency = (project as any).currency || "USD";
 
+  // Project patch helper — merges partial updates into local state
+  function patchProject(patch: Partial<Project>) {
+    setProject(p => ({ ...p, ...patch }));
+  }
+
   async function refreshProject() {
     const pRes = await fetch(`/api/projects/${project.id}`);
     if (pRes.ok) setProject(await pRes.json());
@@ -101,9 +103,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading("send_q");
     try {
       const round = submissions.length > 0
-        ? Math.max(...submissions.map(s => s.round)) + 1
-        : 1;
-
+        ? Math.max(...submissions.map(s => s.round)) + 1 : 1;
       if (round > 1) {
         const res = await fetch("/api/questionnaire/send", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -113,10 +113,8 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
         if (!res.ok) throw new Error(data.error || "Failed");
         await refreshProject();
         toast.success(`Questionnaire resent to ${project.client_email}`);
-        setLoading(null);
-        return;
+        setLoading(null); return;
       }
-
       let diff: PersonalisationDiff | null = null;
       const callBrief = (project as any).call_brief;
       if (callBrief) {
@@ -128,21 +126,15 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
           if (pRes.ok) { const pData = await pRes.json(); diff = pData.diff || null; }
         } catch {}
       }
-
-      setPreviewTemplate(DEFAULT_TEMPLATE);
-      setPreviewDiff(diff);
-      setPreviewRound(round);
-      setPreviewOpen(true);
+      setPreviewTemplate(DEFAULT_TEMPLATE); setPreviewDiff(diff);
+      setPreviewRound(round); setPreviewOpen(true);
     } catch (e: any) {
       toast.error(e.message || "Failed to prepare questionnaire");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function handlePreviewSent() {
-    setPreviewOpen(false);
-    await refreshProject();
+    setPreviewOpen(false); await refreshProject();
     toast.success(`Questionnaire sent to ${project.client_email}`);
   }
 
@@ -155,11 +147,10 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setProject(p => ({ ...p, call_brief: data.brief }));
+      patchProject({ call_brief: data.brief } as any);
       toast.success("Transcript analysed — call brief extracted");
-    } catch (e: any) {
-      toast.error(e.message || "Failed to process transcript");
-    } finally { setLoading(null); }
+    } catch (e: any) { toast.error(e.message || "Failed to process transcript"); }
+    finally { setLoading(null); }
   }
 
   async function runClarificationCheck() {
@@ -178,9 +169,8 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       });
       toast.success(`Gap check complete — ${data.flags?.length || 0} potential gaps found`);
       setActiveTab("questionnaire");
-    } catch (e: any) {
-      toast.error(e.message || "Gap check failed");
-    } finally { setLoading(null); }
+    } catch (e: any) { toast.error(e.message || "Gap check failed"); }
+    finally { setLoading(null); }
   }
 
   async function sendFollowUp() {
@@ -192,11 +182,10 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
         body: JSON.stringify({ projectId: project.id, acceptedFlags }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
-      setProject(p => ({ ...p, status: "clarification_sent" }));
+      patchProject({ status: "clarification_sent" });
       toast.success(`Follow-up sent to ${project.client_email} with ${acceptedFlags.length} question(s)`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send follow-up");
-    } finally { setLoading(null); }
+    } catch (e: any) { toast.error(e.message || "Failed to send follow-up"); }
+    finally { setLoading(null); }
   }
 
   async function generateReport(specificSection?: ReportSectionKey) {
@@ -212,20 +201,18 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
       const pRes = await fetch(`/api/projects/${project.id}`);
       const updated = await pRes.json();
       if (updated.reports?.[0]) setReport(updated.reports[0]);
-      setProject(p => ({ ...p, status: "report_draft" }));
+      patchProject({ status: "report_draft" });
       setActiveTab("report");
       if (!specificSection) toast.success("Report draft generated — review sections in the Report tab");
-    } catch (e: any) {
-      toast.error(e.message || "Report generation failed");
-    } finally { setLoading(null); }
+    } catch (e: any) { toast.error(e.message || "Report generation failed"); }
+    finally { setLoading(null); }
   }
 
   async function acceptFlag(flagId: string) {
     setLoading(`flag_${flagId}`);
     try {
       const res = await fetch(`/api/ai/flags/${flagId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "accepted" }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
       setFlags(f => f.map(x => x.id === flagId ? data.flag : x));
     } catch (e: any) { toast.error(e.message || "Failed to accept gap"); }
     finally { setLoading(null); }
@@ -235,8 +222,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading(`flag_${flagId}`);
     try {
       const res = await fetch(`/api/ai/flags/${flagId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "dismissed" }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
       setFlags(f => f.map(x => x.id === flagId ? data.flag : x));
     } catch (e: any) { toast.error(e.message || "Failed to dismiss gap"); }
     finally { setLoading(null); }
@@ -246,8 +232,7 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
     setLoading(`flag_${flagId}`);
     try {
       const res = await fetch(`/api/ai/flags/${flagId}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
       setFlags(f => f.filter(x => x.id !== flagId));
       toast.success("Gap removed");
     } catch (e: any) { toast.error(e.message || "Failed to delete gap"); }
@@ -261,11 +246,8 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, submissionId: latestSubmission?.id, ...gap }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setFlags(f => [...f, data.flag]);
-      toast.success("Custom gap added");
-      return true;
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
+      setFlags(f => [...f, data.flag]); toast.success("Custom gap added"); return true;
     } catch (e: any) { toast.error(e.message || "Failed to add gap"); return false; }
     finally { setLoading(null); }
   }
@@ -282,94 +264,58 @@ export function ProjectWorkspace({ project: initial, report: initialReport, user
   return (
     <>
       <ToastProvider />
-
       {previewOpen && previewTemplate && (
         <QuestionnairePreviewModal
-          projectId={project.id}
-          template={previewTemplate}
-          diff={previewDiff}
-          round={previewRound}
-          onClose={() => setPreviewOpen(false)}
-          onSent={handlePreviewSent}
+          projectId={project.id} template={previewTemplate} diff={previewDiff}
+          round={previewRound} onClose={() => setPreviewOpen(false)} onSent={handlePreviewSent}
         />
       )}
 
       <div className="px-8 py-6">
-        {/* Tab bar */}
         <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
           {TABS.map(tab => {
-            const disabled =
-              (tab.id === "analysis" && !analysisEnabled) ||
-              (tab.id === "report" && !reportEnabled);
-            const badge =
-              tab.id === "questionnaire" && pendingFlags.length > 0
-                ? pendingFlags.length : undefined;
+            const disabled = (tab.id === "analysis" && !analysisEnabled) || (tab.id === "report" && !reportEnabled);
+            const badge = tab.id === "questionnaire" && pendingFlags.length > 0 ? pendingFlags.length : undefined;
             return (
-              <button
-                key={tab.id}
-                onClick={() => !disabled && navigateTo(tab.id)}
-                disabled={disabled}
+              <button key={tab.id} onClick={() => !disabled && navigateTo(tab.id)} disabled={disabled}
                 className={`px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                  disabled
-                    ? "opacity-40 cursor-not-allowed border-transparent text-slate-400"
-                    : activeTab === tab.id
-                      ? "border-green-700 text-green-800"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
-                }`}
-              >
+                  disabled ? "opacity-40 cursor-not-allowed border-transparent text-slate-400"
+                  : activeTab === tab.id ? "border-green-700 text-green-800"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}>
                 {tab.label}
-                {badge ? (
-                  <span className="bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                    {badge}
-                  </span>
-                ) : null}
+                {badge ? <span className="bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{badge}</span> : null}
               </button>
             );
           })}
         </div>
 
         {activeTab === "overview" && (
-          <OverviewTab
-            project={project} report={report} hasSubmission={!!latestSubmission}
+          <OverviewTab project={project} report={report} hasSubmission={!!latestSubmission}
             pendingFlagsCount={pendingFlags.length} acceptedFlagsCount={acceptedFlags.length}
             loading={loading} onSendQuestionnaire={sendQuestionnaire}
             onRunClarify={runClarificationCheck} onSendFollowUp={sendFollowUp}
             onGenerateReport={generateReport} onUploadTranscript={uploadTranscript}
-            onScheduled={link => setProject(p => ({ ...p, meet_link: link, status: "call_scheduled" }))}
-            onNavigate={navigateTo}
-          />
+            onScheduled={link => patchProject({ meet_link: link, status: "call_scheduled" })}
+            onNavigate={navigateTo} />
         )}
-
         {activeTab === "questionnaire" && (
-          <QuestionnaireTab
-            project={project} submissions={submissions} flags={flags} loading={loading}
+          <QuestionnaireTab project={project} submissions={submissions} flags={flags} loading={loading}
             onSendQuestionnaire={sendQuestionnaire} onRunClarify={runClarificationCheck}
             onSendFollowUp={sendFollowUp} onAcceptFlag={acceptFlag}
-            onDismissFlag={dismissFlag} onDeleteFlag={deleteFlag} onAddFlag={addFlag}
-          />
+            onDismissFlag={dismissFlag} onDeleteFlag={deleteFlag} onAddFlag={addFlag} />
         )}
-
         {activeTab === "analysis" && (
-          <AnalysisTab
-            project={project} report={report} currency={currency}
-            onGenerateReport={() => generateReport()} loadingReport={loading === "report"}
-          />
+          <AnalysisTab project={project} report={report} currency={currency}
+            onGenerateReport={() => generateReport()} loadingReport={loading === "report"} />
         )}
-
         {activeTab === "report" && (
-          <ReportTab
-            project={project} report={report} hasSubmission={!!latestSubmission}
+          <ReportTab project={project} report={report} hasSubmission={!!latestSubmission}
             loading={loading} onGenerateReport={generateReport} onUpdateReport={setReport}
-          />
+            onUpdateProject={patchProject} />
         )}
-
-        {activeTab === "artifacts" && (
-          <ArtifactsTab projectId={project.id} />
-        )}
-
-        {activeTab === "log" && (
-          <LogTab projectId={project.id} />
-        )}
+        {activeTab === "artifacts" && <ArtifactsTab projectId={project.id} />}
+        {activeTab === "log" && <LogTab projectId={project.id} />}
       </div>
     </>
   );

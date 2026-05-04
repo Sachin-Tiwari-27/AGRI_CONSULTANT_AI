@@ -52,7 +52,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to update report status", details: reportUpdateError.message }, { status: 500 });
   }
 
-  await supabase.from("projects").update({ status: "report_published" }).eq("id", projectId);
+  // Determine new status
+  // 1. If already completed (republish), keep it completed
+  // 2. If price is 0, set to completed (free unlock)
+  // 3. Otherwise report_published (waiting for payment)
+  let newStatus = "report_published";
+  let paymentCollected = project.payment_collected || false;
+
+  if (project.status === "completed") {
+    newStatus = "completed";
+  } else if (project.report_price === 0) {
+    newStatus = "completed";
+    paymentCollected = true;
+  }
+
+  const { error: projectUpdateError } = await supabase
+    .from("projects")
+    .update({ 
+      status: newStatus,
+      payment_collected: paymentCollected
+    })
+    .eq("id", projectId);
+
+  if (projectUpdateError) {
+    return NextResponse.json({ error: "Failed to update project status", details: projectUpdateError.message }, { status: 500 });
+  }
 
   const warnings: string[] = [];
   if (!pdfPath) warnings.push("PDF generation failed — report published without PDF attachment.");
@@ -89,5 +113,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, ...(warnings.length > 0 ? { warnings } : {}) });
+  return NextResponse.json({ 
+    success: true, 
+    status: newStatus,
+    payment_collected: paymentCollected,
+    ...(warnings.length > 0 ? { warnings } : {}) 
+  });
 }
