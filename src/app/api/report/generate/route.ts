@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { callAI, callAIJSON, trimAnswersForTask, trimContext } from "@/lib/ai/ai.service";
+import {
+  callAI,
+  callAIJSON,
+  trimAnswersForTask,
+  trimContext,
+} from "@/lib/ai/ai.service";
 import { researchMarket, fetchClimateData } from "@/lib/ai/search.service";
 import { parseGPS } from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
 import type { ReportSectionKey, FinancialModel } from "@/types";
 
 function resolveCurrency(project: Record<string, unknown>): string {
-  return (project.currency as string) || detectCurrencyFromCountry(project.country as string) || "USD";
+  return (
+    (project.currency as string) ||
+    detectCurrencyFromCountry(project.country as string) ||
+    "USD"
+  );
 }
 
 function detectCurrencyFromCountry(country?: string): string | null {
@@ -27,18 +36,25 @@ function detectCurrencyFromCountry(country?: string): string | null {
   if (c.includes("ghana")) return "GHS";
   if (c.includes("nigeria")) return "NGN";
   if (c.includes("uk") || c.includes("britain")) return "GBP";
-  if (["france","germany","spain","italy","netherlands"].some(n => c.includes(n))) return "EUR";
+  if (
+    ["france", "germany", "spain", "italy", "netherlands"].some((n) =>
+      c.includes(n),
+    )
+  )
+    return "EUR";
   return "USD";
 }
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const { projectId, sectionsToGenerate } = await req.json();
 
-  // Fetch project — include financial_model_override and financial_model_notes
   const { data: project } = await supabase
     .from("projects")
     .select("*, financial_model_override, financial_model_notes")
@@ -46,11 +62,13 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (!project || project.consultant_id !== user.id)
-    return NextResponse.json({ error: "Not found or forbidden" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Not found or forbidden" },
+      { status: 404 },
+    );
 
   const currency = resolveCurrency(project as Record<string, unknown>);
 
-  // Questionnaire data
   const { data: submissions } = await supabase
     .from("questionnaire_submissions")
     .select("*")
@@ -61,14 +79,20 @@ export async function POST(req: NextRequest) {
   const allAnswers: Record<string, unknown> =
     submissions?.reduce((acc, s) => ({ ...acc, ...s.answers }), {}) || {};
 
-  if (!submissions || submissions.length === 0 || Object.keys(allAnswers).length === 0) {
+  if (
+    !submissions ||
+    submissions.length === 0 ||
+    Object.keys(allAnswers).length === 0
+  ) {
     return NextResponse.json(
-      { error: "No questionnaire submissions found. Please collect questionnaire data before generating a report." },
-      { status: 400 }
+      {
+        error:
+          "No questionnaire submissions found. Please collect questionnaire data before generating a report.",
+      },
+      { status: 400 },
     );
   }
 
-  // Consultant research notes
   const { data: consultantNotes } = await supabase
     .from("consultant_notes")
     .select("category, title, content, is_pinned")
@@ -77,17 +101,23 @@ export async function POST(req: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  // Merge consultant's financial_model_notes into research notes if present
   const financialModelNotes = (project as any).financial_model_notes
     ? `[FINANCIAL MODEL NOTES — CONSULTANT OVERRIDE]\n${(project as any).financial_model_notes}`
     : null;
 
-  const notesForReport = [
-    consultantNotes?.length
-      ? consultantNotes.map(n => `[${n.category.toUpperCase()}] ${n.title}:\n${n.content}`).join("\n\n")
-      : null,
-    financialModelNotes,
-  ].filter(Boolean).join("\n\n") || "No additional consultant research notes provided.";
+  const notesForReport =
+    [
+      consultantNotes?.length
+        ? consultantNotes
+            .map(
+              (n) => `[${n.category.toUpperCase()}] ${n.title}:\n${n.content}`,
+            )
+            .join("\n\n")
+        : null,
+      financialModelNotes,
+    ]
+      .filter(Boolean)
+      .join("\n\n") || "No additional consultant research notes provided.";
 
   const { data: existingReport } = await supabase
     .from("reports")
@@ -97,12 +127,17 @@ export async function POST(req: NextRequest) {
 
   const isIncremental = !!(sectionsToGenerate && existingReport);
 
-  // Live context data
-  let marketResearch: string = existingReport?.sections?.context_market_data?.content || "";
-  let climateData: string = existingReport?.sections?.context_climate_data?.content || "";
+  let marketResearch: string =
+    existingReport?.sections?.context_market_data?.content || "";
+  let climateData: string =
+    existingReport?.sections?.context_climate_data?.content || "";
 
   if (!marketResearch) {
-    marketResearch = await researchMarket(project.crop_types || [], project.region || "", project.country || "");
+    marketResearch = await researchMarket(
+      project.crop_types || [],
+      project.region || "",
+      project.country || "",
+    );
   }
   if (!climateData) {
     const gps = parseGPS(project.gps_coordinates || "");
@@ -125,17 +160,27 @@ export async function POST(req: NextRequest) {
     agro_tourism: project.project_type === "agro_tourism" ? "Yes" : "No",
     gps_coordinates: project.gps_coordinates || "Not provided",
     land_size_sqm: project.land_size_sqm?.toString() || "Not provided",
-    greenhouse_area_sqm: project.land_size_sqm ? (project.land_size_sqm * 0.35).toFixed(0) : "5000",
-    nethouse_area_sqm: project.land_size_sqm ? (project.land_size_sqm * 0.15).toFixed(0) : "2000",
+    greenhouse_area_sqm: project.land_size_sqm
+      ? (project.land_size_sqm * 0.35).toFixed(0)
+      : "5000",
+    nethouse_area_sqm: project.land_size_sqm
+      ? (project.land_size_sqm * 0.15).toFixed(0)
+      : "2000",
     budget_range: project.budget_range || "Not specified",
     experience_level: project.experience_level || "Not specified",
-    water_source: String(allAnswers["q6"] ?? allAnswers["water_source"] ?? "Not specified"),
-    water_quality: String(allAnswers["q8"] ?? allAnswers["water_ec_tds"] ?? "Not specified"),
-    power_source: String(allAnswers["q10"] ?? allAnswers["power_source"] ?? "Not specified"),
+    water_source: String(
+      allAnswers["q6"] ?? allAnswers["water_source"] ?? "Not specified",
+    ),
+    water_quality: String(
+      allAnswers["q8"] ?? allAnswers["water_ec_tds"] ?? "Not specified",
+    ),
+    power_source: String(
+      allAnswers["q10"] ?? allAnswers["power_source"] ?? "Not specified",
+    ),
   };
 
-  // Technical analysis
-  let technicalAnalysis: string = existingReport?.sections?.technical_analysis?.content || "";
+  let technicalAnalysis: string =
+    existingReport?.sections?.technical_analysis?.content || "";
   if (!isIncremental || !technicalAnalysis) {
     const trimmedAnswers = trimAnswersForTask(allAnswers, "technical_analysis");
     const techResp = await callAI({
@@ -146,26 +191,28 @@ export async function POST(req: NextRequest) {
     technicalAnalysis = techResp.content;
   }
 
-  // ── Financial model: consultant override takes priority ───────────
-  // If the consultant has saved an override, use it directly.
-  // This skips the AI financial_projection call entirely — saving tokens
-  // and ensuring the report reflects corrected numbers.
+  // Financial model: override > existing > AI
   let financialModel: FinancialModel | null = null;
   let financialModelSource = "ai_generated";
-
-  const override = (project as any).financial_model_override as FinancialModel | null;
+  const override = (project as any)
+    .financial_model_override as FinancialModel | null;
 
   if (override && override.capex_total !== undefined) {
-    console.log("[ReportGen] Using consultant financial model override");
     financialModel = override;
     financialModelSource = "consultant_override";
+    console.log("[ReportGen] Using consultant financial model override");
   } else if (isIncremental && existingReport?.financial_model) {
-    console.log("[ReportGen] Using existing report financial model (incremental)");
     financialModel = existingReport.financial_model as FinancialModel;
     financialModelSource = "existing_report";
+    console.log(
+      "[ReportGen] Using existing report financial model (incremental)",
+    );
   } else {
     console.log("[ReportGen] Generating financial model via AI");
-    const trimmedAnswers = trimAnswersForTask(allAnswers, "financial_projection");
+    const trimmedAnswers = trimAnswersForTask(
+      allAnswers,
+      "financial_projection",
+    );
     financialModel = await callAIJSON<FinancialModel>({
       task: "financial_projection",
       variables: { ...baseVars, questionnaire_answers: trimmedAnswers },
@@ -193,8 +240,12 @@ export async function POST(req: NextRequest) {
   };
 
   const sectionKeys: ReportSectionKey[] = sectionsToGenerate || [
-    "executive_summary", "market_analysis", "business_model",
-    "financial_projection", "risk_mitigation", "conclusion",
+    "executive_summary",
+    "market_analysis",
+    "business_model",
+    "financial_projection",
+    "risk_mitigation",
+    "conclusion",
   ];
 
   const taskMap: Partial<Record<ReportSectionKey, string>> = {
@@ -213,57 +264,103 @@ export async function POST(req: NextRequest) {
     if (!task) continue;
     console.log(`[ReportGen] Generating section: ${key}`);
     try {
-      const trimmedAnswers = trimAnswersForTask(allAnswers, task as import("@/types").AITask, 1200);
+      const trimmedAnswers = trimAnswersForTask(
+        allAnswers,
+        task as import("@/types").AITask,
+        1200,
+      );
       const resp = await callAI({
         task: task as import("@/types").AITask,
         variables: { ...sectionVars, questionnaire_answers: trimmedAnswers },
         maxTokens: 16000,
       });
       sections[key] = {
-        key, content: resp.content, ai_generated: true,
-        last_edited_at: new Date().toISOString(), approved: false,
+        key,
+        content: resp.content,
+        ai_generated: true,
+        last_edited_at: new Date().toISOString(),
+        approved: false,
       };
     } catch (err) {
       console.error(`[ReportGen] Failed section ${key}:`, err);
       sections[key] = {
         key,
         content: `> **[Section Generation Failed]**\n\nThis section could not be generated: ${err instanceof Error ? err.message : "Unknown error"}.\n\nClick "Regenerate" to retry.`,
-        ai_generated: true, last_edited_at: new Date().toISOString(), approved: false,
+        ai_generated: true,
+        last_edited_at: new Date().toISOString(),
+        approved: false,
       };
     }
   }
 
-  sections["technical_analysis"] = { key: "technical_analysis", content: technicalAnalysis, ai_generated: true, last_edited_at: new Date().toISOString(), approved: false };
-  sections["context_market_data"] = { key: "context_market_data", content: marketResearch, title: "Live Market Research Context", ai_generated: true, last_edited_at: new Date().toISOString(), approved: false };
-  sections["context_climate_data"] = { key: "context_climate_data", content: climateData, title: "Location Climate Context", ai_generated: true, last_edited_at: new Date().toISOString(), approved: false };
+  sections["technical_analysis"] = {
+    key: "technical_analysis",
+    content: technicalAnalysis,
+    ai_generated: true,
+    last_edited_at: new Date().toISOString(),
+    approved: false,
+  };
+  sections["context_market_data"] = {
+    key: "context_market_data",
+    content: marketResearch,
+    title: "Live Market Research Context",
+    ai_generated: true,
+    last_edited_at: new Date().toISOString(),
+    approved: false,
+  };
+  sections["context_climate_data"] = {
+    key: "context_climate_data",
+    content: climateData,
+    title: "Location Climate Context",
+    ai_generated: true,
+    last_edited_at: new Date().toISOString(),
+    approved: false,
+  };
 
-  // Upsert report
+  // ── Branding: read from profile (pkg5 addition) ───────────────────
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select(
+      "full_name, company_name, logo_url, brand_primary_color, brand_secondary_color, brand_footer_text",
+    )
+    .eq("id", user.id)
+    .single();
+
+  const branding = {
+    consultant_name: profile?.full_name || user.email || "Consultant",
+    company_name: profile?.company_name || "AgriAI Consultancy",
+    logo_url: profile?.logo_url || null,
+    primary_color: profile?.brand_primary_color || "#1A5C38",
+    secondary_color: profile?.brand_secondary_color || "#2E7D52",
+    footer_text: profile?.brand_footer_text || null,
+  };
+
   if (existingReport) {
-    await supabase.from("reports").update({
-      sections: { ...existingReport.sections, ...sections },
-      financial_model: financialModel,
-      status: "draft",
-    }).eq("project_id", projectId);
+    await supabase
+      .from("reports")
+      .update({
+        sections: { ...existingReport.sections, ...sections },
+        financial_model: financialModel,
+        // Update branding on every regeneration so new logo/colours apply
+        branding,
+        status: "draft",
+      })
+      .eq("project_id", projectId);
   } else {
-    const { data: profile } = await supabase
-      .from("profiles").select("full_name, company_name").eq("id", user.id).single();
     await supabase.from("reports").insert({
       project_id: projectId,
       sections,
       financial_model: financialModel,
       status: "draft",
-      branding: {
-        consultant_name: profile?.full_name || user.email || "Consultant",
-        company_name: profile?.company_name || "AgriAI Consultancy",
-        primary_color: "#1A5C38",
-        secondary_color: "#2E7D52",
-      },
+      branding,
     });
   }
 
-  await supabase.from("projects").update({ status: "report_draft" }).eq("id", projectId);
+  await supabase
+    .from("projects")
+    .update({ status: "report_draft" })
+    .eq("id", projectId);
 
-  // Log event — note whether override was used
   await logProjectEvent(supabase, {
     projectId,
     eventType: "report_generated",
