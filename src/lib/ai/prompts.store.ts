@@ -30,7 +30,7 @@ Extract and structure the following into clean JSON. Be concise — only include
 Return only valid JSON. No preamble or explanation.
 `,
 
-  // ── NEW: Questionnaire personalisation ─────────────────────────────
+  // ── Questionnaire personalisation ──────────────────────────────────
   personalize_questionnaire: `
 You are an agricultural consultant assistant helping personalise a client questionnaire.
 
@@ -77,6 +77,9 @@ Rules:
 `,
 
   // ── Stage 3: gap detection ──────────────────────────────────────────
+  // IMPORTANT: Answers are now pre-labelled (e.g. "Primary Water Source: Deep well")
+  // not raw question IDs. Entries marked [File uploaded: ...] are file attachments —
+  // never flag these as missing data. Only flag genuinely absent information.
   clarification_check: `
 You are a senior agricultural engineer reviewing a client questionnaire for a {{project_type}} project.
 
@@ -86,28 +89,32 @@ Project context:
 - Project type: {{project_type}}
 - Local currency: {{currency}}
 
-Client's questionnaire answers:
+Client's questionnaire answers (human-readable labels):
 {{questionnaire_answers}}
 
-Your task: Review these answers and identify gaps, ambiguities, or technically insufficient responses.
+IMPORTANT INSTRUCTIONS:
+1. Answers marked "[File uploaded: ...]" mean the client has provided a document — do NOT flag these as missing.
+2. Only flag data that is genuinely absent OR technically insufficient for engineering purposes.
+3. Focus on fields CRITICAL for this specific project type and location:
+   - For hydroponic projects: EC/TDS/pH of water is MANDATORY if not provided
+   - For greenhouse projects in arid regions: GPS coordinates are CRITICAL for climate analysis
+   - For export-focused projects: logistics, cold chain details are needed
+   - For agro-tourism projects: visitor capacity, accommodation details
+4. Do NOT flag optional or nice-to-have information.
+5. Be SPECIFIC about why each piece of missing data matters for THIS project in {{country}}.
 
-Focus on fields that are truly critical for designing this specific project type and location:
-- For hydroponic projects: water EC/TDS is mandatory
-- For greenhouse projects: GPS/climate data is critical
-- For projects in arid regions: water availability and quality are paramount
-- For export-focused projects: logistics, cold chain, and certification details are needed
-
-Return a JSON array of flags:
+Return a JSON array of flags (empty array [] if no gaps):
 [
   {
-    "field_name": "exact field or question name",
-    "reason": "clear, specific explanation of why this is needed for THIS project in {{country}}",
+    "field_name": "exact field name matching the label above",
+    "reason": "specific explanation of why this is needed for THIS project type in {{country}}",
     "suggested_question": "polite, specific follow-up question to the client",
-    "severity": "required" | "recommended"
+    "severity": "required"
   }
 ]
 
-Return only valid JSON. If there are no gaps, return [].
+Valid severity values: "required" | "recommended"
+Return ONLY valid JSON. If there are no gaps, return [].
 `,
 
   // ── Stage 3: draft follow-up questions ─────────────────────────────
