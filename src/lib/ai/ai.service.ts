@@ -1,5 +1,6 @@
 import type { AIRequest, AIResponse, AIProvider, AITask } from "@/types";
 import { buildPrompt } from "./prompts.store";
+import { serialiseAnswersForPrompt } from "@/lib/utils";
 
 // ── Provider configuration ────────────────────────────────────────────
 const PROVIDER_CONFIG: Record<
@@ -45,17 +46,16 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   report_conclusion: "openai/gpt-oss-120b:free",
 };
 
-// ── Token budget per task ─────────────────────────────────────────────
-// Raised significantly — incomplete sections were caused by low token limits.
+// ── Token budgets per task ────────────────────────────────────────────
 const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
-  clarification_check: 1200,
+  clarification_check: 1500,
   followup_questions: 800,
   financial_projection: 3000,
   call_brief_summary: 600,
   technical_analysis: 2000,
   climate_analysis: 800,
   market_research: 1000,
-  // Report sections — these need to be long and complete
+  personalize_questionnaire: 800,
   report_executive_summary: 16000,
   report_market_analysis: 16000,
   report_business_model: 16000,
@@ -64,8 +64,10 @@ const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
   report_conclusion: 16000,
 };
 
-// ── Context trimming helpers ──────────────────────────────────────────
-const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
+// ── Keys relevant per task — used by serialiseAnswersForPrompt ────────
+// Maps task names to the questionnaire question IDs that matter for that task.
+// Using the raw question IDs here; serialiseAnswersForPrompt will apply labels.
+export const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
   technical_analysis: [
     "q4",
     "q5",
@@ -80,14 +82,6 @@ const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
     "q16",
     "q17",
     "q20",
-    "water_source",
-    "water_ec_tds",
-    "power_source",
-    "land_size",
-    "gps",
-    "crop_types",
-    "technology_level",
-    "budget",
   ],
   clarification_check: [
     "q4",
@@ -96,12 +90,16 @@ const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
     "q7",
     "q8",
     "q10",
+    "q11",
+    "q12",
+    "q13",
     "q14",
+    "q16",
+    "q17",
+    "q18",
+    "q19",
     "q20",
-    "water_source",
-    "water_ec_tds",
-    "power_source",
-    "gps",
+    "q22",
   ],
   report_executive_summary: ["q14", "q16", "q17", "q18", "q20", "q22"],
   report_market_analysis: ["q14", "q18", "q19", "q20"],
@@ -111,28 +109,24 @@ const RELEVANT_ANSWER_KEYS: Partial<Record<AITask, string[]>> = {
   report_conclusion: ["q14", "q17", "q18", "q20", "q22"],
 };
 
+/**
+ * Prepares questionnaire answers for injection into an AI prompt.
+ * Uses the shared sanitiseAnswers util — strips file objects, applies labels,
+ * filters to relevant keys for the task, hard-truncates to maxChars.
+ *
+ * Previously this was a private trimAnswersForTask() with separate
+ * sanitisation logic; now delegates to utils.ts for consistency.
+ */
 export function trimAnswersForTask(
   answers: Record<string, unknown>,
   task: AITask,
-  maxChars = 1500,
+  maxChars = 2000,
 ): string {
-  const relevantKeys = RELEVANT_ANSWER_KEYS[task];
-  let filtered: Record<string, unknown>;
-
-  if (relevantKeys) {
-    filtered = Object.fromEntries(
-      Object.entries(answers).filter(([k]) =>
-        relevantKeys.some((rk) => k.toLowerCase().includes(rk.toLowerCase())),
-      ),
-    );
-    if (Object.keys(filtered).length === 0) filtered = answers;
-  } else {
-    filtered = answers;
-  }
-
-  const json = JSON.stringify(filtered, null, 2);
-  if (json.length <= maxChars) return json;
-  return json.slice(0, maxChars) + "\n  ... (truncated)\n}";
+  return serialiseAnswersForPrompt(answers, {
+    relevantKeys: RELEVANT_ANSWER_KEYS[task],
+    maxChars,
+    useLabels: true,
+  });
 }
 
 export function trimContext(text: string, maxChars = 2000): string {
@@ -165,9 +159,8 @@ async function processQueue() {
     const next = REQUEST_QUEUE.shift();
     if (next) {
       await next();
-      if (REQUEST_QUEUE.length > 0) {
+      if (REQUEST_QUEUE.length > 0)
         await new Promise((r) => setTimeout(r, MIN_DELAY_MS));
-      }
     }
   }
   isProcessingQueue = false;
@@ -181,7 +174,6 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
 async function _callAI(request: AIRequest): Promise<AIResponse> {
   const providerName = (process.env.AI_PROVIDER || "openrouter") as AIProvider;
   const config = PROVIDER_CONFIG[providerName];
-
   if (!config) throw new Error(`Unknown AI provider: ${providerName}`);
 
   const apiKey = process.env[config.apiKeyEnv];
@@ -196,7 +188,6 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`,
   };
-
   if (providerName === "openrouter") {
     headers["HTTP-Referer"] =
       process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -253,10 +244,8 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     }
 
     const data = await response.json();
-
-    if (data.error) {
+    if (data.error)
       throw new Error(`AI model error: ${JSON.stringify(data.error)}`);
-    }
 
     const content = data.choices?.[0]?.message?.content || "";
     const tokensUsed = data.usage?.total_tokens || 0;

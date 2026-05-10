@@ -7,42 +7,19 @@ import {
   trimContext,
 } from "@/lib/ai/ai.service";
 import { researchMarket, fetchClimateData } from "@/lib/ai/search.service";
-import { parseGPS } from "@/lib/utils";
+import { parseGPS, detectCurrencyFromCountry } from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
 import type { ReportSectionKey, FinancialModel } from "@/types";
 
+// ── Unified currency resolver ─────────────────────────────────────────
+// Previously there were two duplicated functions with slightly different regex.
+// Now uses the single source of truth in utils.ts.
 function resolveCurrency(project: Record<string, unknown>): string {
   return (
-    (project.currency as string) ||
-    detectCurrencyFromCountry(project.country as string) ||
+    (project.currency as string | null) ||
+    detectCurrencyFromCountry(project.country as string | null) ||
     "USD"
   );
-}
-
-function detectCurrencyFromCountry(country?: string): string | null {
-  if (!country) return null;
-  const c = country.toLowerCase();
-  if (c.includes("oman")) return "OMR";
-  if (c.includes("uae") || c.includes("emirates")) return "AED";
-  if (c.includes("saudi") || c.includes("ksa")) return "SAR";
-  if (c.includes("qatar")) return "QAR";
-  if (c.includes("kuwait")) return "KWD";
-  if (c.includes("bahrain")) return "BHD";
-  if (c.includes("india")) return "INR";
-  if (c.includes("jordan")) return "JOD";
-  if (c.includes("egypt")) return "EGP";
-  if (c.includes("morocco")) return "MAD";
-  if (c.includes("kenya")) return "KES";
-  if (c.includes("ghana")) return "GHS";
-  if (c.includes("nigeria")) return "NGN";
-  if (c.includes("uk") || c.includes("britain")) return "GBP";
-  if (
-    ["france", "germany", "spain", "italy", "netherlands"].some((n) =>
-      c.includes(n),
-    )
-  )
-    return "EUR";
-  return "USD";
 }
 
 export async function POST(req: NextRequest) {
@@ -61,11 +38,12 @@ export async function POST(req: NextRequest) {
     .eq("id", projectId)
     .single();
 
-  if (!project || project.consultant_id !== user.id)
+  if (!project || project.consultant_id !== user.id) {
     return NextResponse.json(
       { error: "Not found or forbidden" },
       { status: 404 },
     );
+  }
 
   const currency = resolveCurrency(project as Record<string, unknown>);
 
@@ -191,7 +169,7 @@ export async function POST(req: NextRequest) {
     technicalAnalysis = techResp.content;
   }
 
-  // Financial model: override > existing > AI
+  // Financial model: override → existing → AI-generate
   let financialModel: FinancialModel | null = null;
   let financialModelSource = "ai_generated";
   const override = (project as any)
@@ -317,7 +295,6 @@ export async function POST(req: NextRequest) {
     approved: false,
   };
 
-  // ── Branding: read from profile (pkg5 addition) ───────────────────
   const { data: profile } = await supabase
     .from("profiles")
     .select(
@@ -341,7 +318,6 @@ export async function POST(req: NextRequest) {
       .update({
         sections: { ...existingReport.sections, ...sections },
         financial_model: financialModel,
-        // Update branding on every regeneration so new logo/colours apply
         branding,
         status: "draft",
       })
@@ -368,7 +344,7 @@ export async function POST(req: NextRequest) {
     title: sectionsToGenerate
       ? `Report section regenerated: ${sectionsToGenerate.join(", ")}`
       : "Full report draft generated",
-    detail: `${sectionKeys.length} sections · Financial model: ${financialModelSource}`,
+    detail: `${sectionKeys.length} sections · Financial model: ${financialModelSource} · Currency: ${currency}`,
     metadata: {
       sections_generated: sectionKeys,
       is_incremental: isIncremental,
