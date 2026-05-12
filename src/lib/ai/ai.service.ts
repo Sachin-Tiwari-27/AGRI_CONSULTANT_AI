@@ -244,8 +244,25 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
     }
 
     const data = await response.json();
-    if (data.error)
+    if (data.error) {
+      // Some providers (e.g. OpenRouter) return 200 OK with an error body for
+      // transient upstream failures (idle timeout, bad gateway, etc.).
+      // Treat those as retryable instead of surfacing them immediately.
+      const errCode = data.error?.code ?? data.error?.status;
+      const retryableCodes = [502, 503, 504, "502", "503", "504"];
+      const errMsg: string = data.error?.message ?? "";
+      const isTransient =
+        retryableCodes.includes(errCode) ||
+        /timeout|upstream|bad gateway|unavailable/i.test(errMsg);
+
+      if (isTransient) {
+        lastError = new Error(`AI model error (transient): ${JSON.stringify(data.error)}`);
+        console.warn(`[AI] Transient model error on attempt ${attempt + 1}:`, errMsg);
+        continue;
+      }
+
       throw new Error(`AI model error: ${JSON.stringify(data.error)}`);
+    }
 
     const content = data.choices?.[0]?.message?.content || "";
     const tokensUsed = data.usage?.total_tokens || 0;

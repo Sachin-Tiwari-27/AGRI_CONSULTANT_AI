@@ -133,6 +133,7 @@ create table public.ai_flags (
   suggested_question  text not null,
   severity            text not null default 'required' check (severity in ('required','recommended')),
   status              text not null default 'pending' check (status in ('pending','accepted','dismissed')),
+  is_manual           boolean not null default false,
   created_at          timestamptz default now()
 );
 alter table public.ai_flags enable row level security;
