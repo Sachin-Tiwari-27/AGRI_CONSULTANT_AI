@@ -11,15 +11,40 @@ import { parseGPS, detectCurrencyFromCountry } from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
 import type { ReportSectionKey, FinancialModel } from "@/types";
 
-// ── Unified currency resolver ─────────────────────────────────────────
-// Previously there were two duplicated functions with slightly different regex.
-// Now uses the single source of truth in utils.ts.
 function resolveCurrency(project: Record<string, unknown>): string {
   return (
     (project.currency as string | null) ||
     detectCurrencyFromCountry(project.country as string | null) ||
     "USD"
   );
+}
+
+// ── SSE helpers ───────────────────────────────────────────────────────
+function createSSEStream() {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+
+  function send(data: object) {
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    } catch {
+      // Stream may have closed
+    }
+  }
+
+  function close() {
+    try {
+      controller.close();
+    } catch {}
+  }
+
+  return { stream, send, close };
 }
 
 export async function POST(req: NextRequest) {
@@ -30,7 +55,8 @@ export async function POST(req: NextRequest) {
   if (!user)
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
-  const { projectId, sectionsToGenerate } = await req.json();
+  const body = await req.json();
+  const { projectId, sectionsToGenerate, stream: useStream = false } = body;
 
   const { data: project } = await supabase
     .from("projects")
@@ -105,6 +131,87 @@ export async function POST(req: NextRequest) {
 
   const isIncremental = !!(sectionsToGenerate && existingReport);
 
+  // If streaming, set up SSE and run generation async
+  if (useStream) {
+    const { stream, send, close } = createSSEStream();
+
+    // Run generation in background — don't await
+    runGeneration({
+      project,
+      user,
+      supabase,
+      currency,
+      allAnswers,
+      notesForReport,
+      existingReport,
+      isIncremental,
+      sectionsToGenerate,
+      projectId,
+      send,
+      close,
+    }).catch((err) => {
+      console.error("[ReportGen-Stream] Fatal error:", err);
+      send({ type: "error", error: err.message || "Unknown error" });
+      close();
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no", // Disable Nginx buffering
+      },
+    });
+  }
+
+  // Non-streaming path — original behaviour
+  const result = await runGeneration({
+    project,
+    user,
+    supabase,
+    currency,
+    allAnswers,
+    notesForReport,
+    existingReport,
+    isIncremental,
+    sectionsToGenerate,
+    projectId,
+    send: () => {},
+    close: () => {},
+  });
+
+  return NextResponse.json({ success: true, sections: result.generatedKeys });
+}
+
+// ── Core generation logic (shared between streaming and non-streaming) ─
+async function runGeneration({
+  project,
+  user,
+  supabase,
+  currency,
+  allAnswers,
+  notesForReport,
+  existingReport,
+  isIncremental,
+  sectionsToGenerate,
+  projectId,
+  send,
+  close,
+}: {
+  project: any;
+  user: any;
+  supabase: any;
+  currency: string;
+  allAnswers: Record<string, unknown>;
+  notesForReport: string;
+  existingReport: any;
+  isIncremental: boolean;
+  sectionsToGenerate: string[] | undefined;
+  projectId: string;
+  send: (data: object) => void;
+  close: () => void;
+}) {
   let marketResearch: string =
     existingReport?.sections?.context_market_data?.content || "";
   let climateData: string =
@@ -157,6 +264,7 @@ export async function POST(req: NextRequest) {
     ),
   };
 
+  // Technical analysis (always needed)
   let technicalAnalysis: string =
     existingReport?.sections?.technical_analysis?.content || "";
   if (!isIncremental || !technicalAnalysis) {
@@ -169,7 +277,7 @@ export async function POST(req: NextRequest) {
     technicalAnalysis = techResp.content;
   }
 
-  // Financial model: override → existing → AI-generate
+  // Financial model: override → existing → AI
   let financialModel: FinancialModel | null = null;
   let financialModelSource = "ai_generated";
   const override = (project as any)
@@ -178,15 +286,10 @@ export async function POST(req: NextRequest) {
   if (override && override.capex_total !== undefined) {
     financialModel = override;
     financialModelSource = "consultant_override";
-    console.log("[ReportGen] Using consultant financial model override");
   } else if (isIncremental && existingReport?.financial_model) {
     financialModel = existingReport.financial_model as FinancialModel;
     financialModelSource = "existing_report";
-    console.log(
-      "[ReportGen] Using existing report financial model (incremental)",
-    );
   } else {
-    console.log("[ReportGen] Generating financial model via AI");
     const trimmedAnswers = trimAnswersForTask(
       allAnswers,
       "financial_projection",
@@ -217,14 +320,15 @@ export async function POST(req: NextRequest) {
     consultant_research_notes: notesForReport,
   };
 
-  const sectionKeys: ReportSectionKey[] = sectionsToGenerate || [
-    "executive_summary",
-    "market_analysis",
-    "business_model",
-    "financial_projection",
-    "risk_mitigation",
-    "conclusion",
-  ];
+  const sectionKeys: ReportSectionKey[] =
+    (sectionsToGenerate as ReportSectionKey[]) || [
+      "executive_summary",
+      "market_analysis",
+      "business_model",
+      "financial_projection",
+      "risk_mitigation",
+      "conclusion",
+    ];
 
   const taskMap: Partial<Record<ReportSectionKey, string>> = {
     executive_summary: "report_executive_summary",
@@ -235,12 +339,20 @@ export async function POST(req: NextRequest) {
     conclusion: "report_conclusion",
   };
 
+  // Notify client which sections are coming
+  send({ type: "start", sections: sectionKeys });
+
   const sections: Record<string, unknown> = {};
+  const generatedKeys: string[] = [];
 
   for (const key of sectionKeys) {
     const task = taskMap[key];
     if (!task) continue;
+
+    // Notify client this section is being generated
+    send({ type: "generating", section: key });
     console.log(`[ReportGen] Generating section: ${key}`);
+
     try {
       const trimmedAnswers = trimAnswersForTask(
         allAnswers,
@@ -252,25 +364,56 @@ export async function POST(req: NextRequest) {
         variables: { ...sectionVars, questionnaire_answers: trimmedAnswers },
         maxTokens: 16000,
       });
-      sections[key] = {
+
+      const sectionData = {
         key,
         content: resp.content,
         ai_generated: true,
         last_edited_at: new Date().toISOString(),
         approved: false,
       };
+
+      sections[key] = sectionData;
+      generatedKeys.push(key);
+
+      // Persist this section immediately so the UI can show it
+      const updatedSections = {
+        ...(existingReport?.sections || {}),
+        ...sections,
+      };
+      await supabase.from("reports").upsert(
+        {
+          project_id: projectId,
+          sections: updatedSections,
+          financial_model: financialModel,
+          status: "draft",
+        },
+        { onConflict: "project_id" },
+      );
+
+      // Notify client section is complete with content
+      send({ type: "section_complete", section: key, content: resp.content });
     } catch (err) {
       console.error(`[ReportGen] Failed section ${key}:`, err);
+      const errContent = `> **[Section Generation Failed]**\n\nThis section could not be generated: ${err instanceof Error ? err.message : "Unknown error"}.\n\nClick "Regenerate" to retry.`;
+
       sections[key] = {
         key,
-        content: `> **[Section Generation Failed]**\n\nThis section could not be generated: ${err instanceof Error ? err.message : "Unknown error"}.\n\nClick "Regenerate" to retry.`,
+        content: errContent,
         ai_generated: true,
         last_edited_at: new Date().toISOString(),
         approved: false,
       };
+
+      send({
+        type: "section_error",
+        section: key,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
     }
   }
 
+  // Add context sections
   sections["technical_analysis"] = {
     key: "technical_analysis",
     content: technicalAnalysis,
@@ -295,6 +438,7 @@ export async function POST(req: NextRequest) {
     approved: false,
   };
 
+  // Branding
   const { data: profile } = await supabase
     .from("profiles")
     .select(
@@ -312,25 +456,22 @@ export async function POST(req: NextRequest) {
     footer_text: profile?.brand_footer_text || null,
   };
 
-  if (existingReport) {
-    await supabase
-      .from("reports")
-      .update({
-        sections: { ...existingReport.sections, ...sections },
-        financial_model: financialModel,
-        branding,
-        status: "draft",
-      })
-      .eq("project_id", projectId);
-  } else {
-    await supabase.from("reports").insert({
+  // Final upsert with all sections + branding
+  const finalSections = {
+    ...(existingReport?.sections || {}),
+    ...sections,
+  };
+
+  await supabase.from("reports").upsert(
+    {
       project_id: projectId,
-      sections,
+      sections: finalSections,
       financial_model: financialModel,
-      status: "draft",
       branding,
-    });
-  }
+      status: "draft",
+    },
+    { onConflict: "project_id" },
+  );
 
   await supabase
     .from("projects")
@@ -353,5 +494,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, sections: Object.keys(sections) });
+  // Signal complete
+  send({ type: "complete", sections: generatedKeys });
+  close();
+
+  return { generatedKeys };
 }
