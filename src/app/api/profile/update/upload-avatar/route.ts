@@ -2,7 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+] as const;
+
+const FILE_EXTENSIONS: Record<(typeof ALLOWED_TYPES)[number], string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+};
+
+const UPLOAD_TYPES = ["avatar", "logo"] as const;
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -14,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const form = await req.formData();
   const file = form.get("file");
-  const type = String(form.get("type") || "avatar"); // 'avatar' | 'logo'
+  const rawType = String(form.get("type") || "avatar");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing file" }, { status: 400 });
@@ -27,14 +43,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  if (!UPLOAD_TYPES.includes(rawType as (typeof UPLOAD_TYPES)[number])) {
     return NextResponse.json(
-      { error: "Only JPEG, PNG, WebP, and GIF are allowed" },
+      { error: "Upload type must be avatar or logo" },
       { status: 400 },
     );
   }
 
-  const ext = file.type.split("/")[1] || "jpg";
+  const type = rawType as (typeof UPLOAD_TYPES)[number];
+
+  if (!ALLOWED_TYPES.includes(file.type as (typeof ALLOWED_TYPES)[number])) {
+    return NextResponse.json(
+      { error: "Only JPEG, PNG, WebP, GIF, and SVG are allowed" },
+      { status: 400 },
+    );
+  }
+
+  const ext = FILE_EXTENSIONS[file.type as (typeof ALLOWED_TYPES)[number]];
   const path = `${user.id}/${type}.${ext}`;
 
   const { error: uploadError } = await supabase.storage

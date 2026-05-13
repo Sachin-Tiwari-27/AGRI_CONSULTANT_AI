@@ -3,15 +3,26 @@ import { createServiceClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 import { sendReportReady } from '@/lib/email.service'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('Stripe is not configured')
+  }
+  return new Stripe(secretKey)
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
-  const sig = req.headers.get('stripe-signature')!
+  const sig = req.headers.get('stripe-signature')
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+  if (!sig || !webhookSecret) {
+    return NextResponse.json({ error: 'Stripe webhook is not configured' }, { status: 503 })
+  }
 
   let event: Stripe.Event
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+    event = getStripe().webhooks.constructEvent(body, sig, webhookSecret)
   } catch (err) {
     console.error('[Webhook] Stripe signature verification failed:', err)
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
@@ -51,7 +62,9 @@ export async function POST(req: NextRequest) {
       })
 
       // Send report download email to client
-      const consultantName = (project.profiles as any)?.full_name || 'Your Consultant'
+      const consultantName = Array.isArray(project.profiles)
+        ? project.profiles[0]?.full_name || 'Your Consultant'
+        : project.profiles?.full_name || 'Your Consultant'
       await sendReportReady({
         clientEmail: project.client_email,
         clientName: project.client_name,
