@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('Stripe is not configured')
+  }
+  return new Stripe(secretKey)
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -36,6 +42,13 @@ export async function POST(req: NextRequest) {
 
   if (existingPayment)
     return NextResponse.json({ error: 'Already paid', paid: true }, { status: 400 })
+
+  let stripe: Stripe
+  try {
+    stripe = getStripe()
+  } catch {
+    return NextResponse.json({ error: 'Payment processing is not configured' }, { status: 503 })
+  }
 
   // Create Stripe payment intent
   const paymentIntent = await stripe.paymentIntents.create({

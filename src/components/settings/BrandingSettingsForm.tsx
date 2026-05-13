@@ -6,15 +6,23 @@ import { Button } from "@/components/ui/Button";
 import {
   Save,
   Upload,
-  Palette,
-  Image,
+  Image as ImageIcon,
   CheckCircle2,
   AlertCircle,
   Eye,
 } from "lucide-react";
 
+interface BrandingProfile {
+  logo_url?: string | null;
+  brand_primary_color?: string | null;
+  brand_secondary_color?: string | null;
+  brand_footer_text?: string | null;
+  full_name?: string | null;
+  company_name?: string | null;
+}
+
 interface Props {
-  profile: any;
+  profile: BrandingProfile | null;
 }
 
 const DEFAULT_PRIMARY = "#1A5C38";
@@ -44,15 +52,15 @@ export function BrandingSettingsForm({ profile }: Props) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", "logo");
-      const res = await fetch("/api/profile/upload-avatar", {
+      const res = await fetch("/api/profile/update/upload-avatar", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setLogoUrl(data.url);
-    } catch (e: any) {
-      setErrorMsg(e.message || "Logo upload failed");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Logo upload failed");
       setStatus("error");
     } finally {
       setUploading(false);
@@ -78,8 +86,8 @@ export function BrandingSettingsForm({ profile }: Props) {
         throw new Error(d.error);
       }
       setStatus("saved");
-    } catch (e: any) {
-      setErrorMsg(e.message || "Failed to save");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Failed to save");
       setStatus("error");
     } finally {
       setSaving(false);
@@ -161,7 +169,7 @@ export function BrandingSettingsForm({ profile }: Props) {
                   className="w-full h-full object-contain p-1"
                 />
               ) : (
-                <Image className="w-5 h-5 text-slate-300" />
+                <ImageIcon className="w-5 h-5 text-slate-300" />
               )}
             </div>
             <div>

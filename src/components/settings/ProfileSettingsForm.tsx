@@ -5,15 +5,25 @@ import { Field, Input, Textarea } from "@/components/ui/FormFields";
 import { Button } from "@/components/ui/Button";
 import {
   Save,
-  Upload,
   User,
   Camera,
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
 
+interface ProfileSettings {
+  full_name?: string | null;
+  phone?: string | null;
+  company_name?: string | null;
+  bio?: string | null;
+  website?: string | null;
+  linkedin_url?: string | null;
+  avatar_url?: string | null;
+  email?: string | null;
+}
+
 interface Props {
-  profile: any;
+  profile: ProfileSettings | null;
 }
 
 export function ProfileSettingsForm({ profile }: Props) {
@@ -43,15 +53,15 @@ export function ProfileSettingsForm({ profile }: Props) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", "avatar");
-      const res = await fetch("/api/profile/upload-avatar", {
+      const res = await fetch("/api/profile/update/upload-avatar", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setAvatarUrl(data.url);
-    } catch (e: any) {
-      setErrorMsg(e.message || "Avatar upload failed");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Avatar upload failed");
       setStatus("error");
     } finally {
       setUploading(false);
@@ -72,8 +82,8 @@ export function ProfileSettingsForm({ profile }: Props) {
         throw new Error(d.error);
       }
       setStatus("saved");
-    } catch (e: any) {
-      setErrorMsg(e.message || "Failed to save");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Failed to save");
       setStatus("error");
     } finally {
       setSaving(false);

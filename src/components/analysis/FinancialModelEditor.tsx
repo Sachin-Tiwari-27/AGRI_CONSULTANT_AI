@@ -1,10 +1,10 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import { useState } from 'react'
 import {
-  Plus, Trash2, Save, RefreshCw, AlertCircle,
+  Plus, Trash2, Save, AlertCircle,
   CheckCircle2, ChevronDown, ChevronUp, Info,
   TrendingUp, DollarSign, Clock, BarChart3,
-  Leaf, Zap, Users, ArrowUpRight, ArrowDownRight,
+  Leaf, Zap, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { toast } from '@/components/ui/Toast'
@@ -16,7 +16,7 @@ interface Props {
   currency: string
   initialModel: FinancialModel | null
   initialNotes: string
-  source: 'override' | 'report_draft' | 'none'
+  source: 'override' | 'report_draft' | 'none' | 'ai_estimate'
   onSaved: (model: FinancialModel, notes: string) => void
 }
 
@@ -47,8 +47,6 @@ function NumCell({
 }) {
   const [focused, setFocused] = useState(false)
   const [raw, setRaw] = useState(String(value))
-
-  useEffect(() => { if (!focused) setRaw(String(value)) }, [value, focused])
 
   return (
     <div className={`flex items-center gap-0.5 ${className}`}>
@@ -173,8 +171,8 @@ export function FinancialModelEditor({ projectId, currency, initialModel, initia
       setDirty(false)
       onSaved(data.financialModel, notes)
       toast.success('Financial model saved — report will use these figures on next generation')
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to save financial model')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save financial model')
     } finally {
       setSaving(false)
     }
@@ -189,7 +187,7 @@ export function FinancialModelEditor({ projectId, currency, initialModel, initia
     <div className="space-y-4">
       {/* Source banner */}
       <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm border ${
-        source === 'override'
+        source === 'override' || source === 'ai_estimate'
           ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
           : source === 'report_draft'
           ? 'bg-blue-50 border-blue-200 text-blue-800'
@@ -197,6 +195,8 @@ export function FinancialModelEditor({ projectId, currency, initialModel, initia
       }`}>
         {source === 'override'
           ? <><CheckCircle2 className="w-4 h-4 flex-shrink-0" /> Showing your saved override — this model will be used in the next report generation.</>
+          : source === 'ai_estimate'
+          ? <><CheckCircle2 className="w-4 h-4 flex-shrink-0" /> Showing your saved AI estimate — review and save edits to refine the figures before report generation.</>
           : source === 'report_draft'
           ? <><Info className="w-4 h-4 flex-shrink-0" /> Showing AI-generated model from report draft. Edit and save to lock in your own figures.</>
           : <><AlertCircle className="w-4 h-4 flex-shrink-0" /> No financial model yet. Generate a report first or enter figures manually below.</>
