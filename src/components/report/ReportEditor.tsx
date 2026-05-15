@@ -6,6 +6,7 @@ import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { RichEditor } from "@/components/report/RichEditor";
 import { PaymentGateModal } from "@/components/report/PaymentGateModal";
 import { createClient } from "@/lib/supabase/client";
+import { REPORT_SECTIONS } from "@/lib/report-section-config";
 import {
   CheckCircle,
   Edit3,
@@ -28,24 +29,16 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import type { Report, ReportSectionKey, Project } from "@/types";
 
-const SECTION_TITLES: Record<string, string> = {
-  executive_summary: "Executive Summary",
-  market_analysis: "Market Analysis",
-  business_model: "Business Model",
-  financial_projection: "Financial Projection",
-  risk_mitigation: "Risk & Mitigation",
-  technical_analysis: "Technical Analysis",
-  conclusion: "Conclusion",
-};
+// Derived from the single source of truth — covers all 17 report sections.
+// Adding or reordering sections in report-section-config.ts automatically
+// updates the editor, approval progress, and streaming counter.
+const SECTION_TITLES: Record<string, string> = Object.fromEntries(
+  REPORT_SECTIONS.map((s) => [s.key, s.title]),
+);
 
-const ORDERED_SECTION_KEYS: ReportSectionKey[] = [
-  "executive_summary",
-  "market_analysis",
-  "business_model",
-  "financial_projection",
-  "risk_mitigation",
-  "conclusion",
-];
+const ORDERED_SECTION_KEYS = REPORT_SECTIONS.map(
+  (s) => s.key,
+) as ReportSectionKey[];
 
 interface Props {
   report: Report;

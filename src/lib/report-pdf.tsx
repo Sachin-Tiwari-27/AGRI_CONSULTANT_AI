@@ -8,6 +8,7 @@ import {
   renderToBuffer,
 } from "@react-pdf/renderer";
 import type { Report, ReportSectionKey } from "@/types";
+import { REPORT_SECTIONS } from "@/lib/report-section-config";
 
 const styles = StyleSheet.create({
   page: {
@@ -35,15 +36,13 @@ const styles = StyleSheet.create({
   paragraph: { lineHeight: 1.35, marginBottom: 4 },
 });
 
-const SECTION_TITLES: Record<string, string> = {
-  executive_summary: "Executive Summary",
-  market_analysis: "Market Analysis",
-  business_model: "Business Model",
-  financial_projection: "Financial Projection",
-  risk_mitigation: "Risk & Mitigation",
-  technical_analysis: "Technical Analysis",
-  conclusion: "Conclusion",
-};
+// Derived from the single source of truth — all 17 sections in display order.
+const SECTION_TITLES: Record<string, string> = Object.fromEntries(
+  REPORT_SECTIONS.map((s) => [s.key, s.title])
+);
+
+// Ordered keys for PDF rendering — mirrors config generation order.
+const PDF_SECTION_KEYS = REPORT_SECTIONS.map((s) => s.key);
 
 function markdownToPlainText(content: string): string {
   return content
@@ -65,7 +64,8 @@ function ReportPdfDocument({
   report: Report;
   projectTitle: string;
 }) {
-  const orderedSections = Object.keys(SECTION_TITLES).filter(
+  // Iterate over config-ordered section keys so all generated sections are included.
+  const orderedSections = PDF_SECTION_KEYS.filter(
     (k) => report.sections[k as ReportSectionKey],
   );
 

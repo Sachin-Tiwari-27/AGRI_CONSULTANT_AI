@@ -7,9 +7,19 @@ import {
   trimContext,
 } from "@/lib/ai/ai.service";
 import { researchMarket, fetchClimateData } from "@/lib/ai/search.service";
-import { parseGPS, detectCurrencyFromCountry } from "@/lib/utils";
+import {
+  parseGPS,
+  detectCurrencyFromCountry,
+  serialiseAnswersForPrompt,
+} from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
-import type { ReportSectionKey, FinancialModel } from "@/types";
+import {
+  REPORT_SECTIONS,
+  REPORT_APPENDICES,
+  getSectionsByPhase,
+  CONTEXT_SECTION_KEYS,
+} from "@/lib/report-section-config";
+import type { ReportSectionKey, FinancialModel, AITask } from "@/types";
 
 function resolveCurrency(project: Record<string, unknown>): string {
   return (
@@ -19,32 +29,175 @@ function resolveCurrency(project: Record<string, unknown>): string {
   );
 }
 
-// ── SSE helpers ───────────────────────────────────────────────────────
+// ── SSE helpers ────────────────────────────────────────────────────────
 function createSSEStream() {
   const encoder = new TextEncoder();
-  let controller: ReadableStreamDefaultController<Uint8Array>;
-
+  let ctrl: ReadableStreamDefaultController<Uint8Array>;
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
-      controller = c;
+      ctrl = c;
     },
   });
-
-  function send(data: object) {
+  const send = (data: object) => {
     try {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-    } catch {
-      // Stream may have closed
-    }
-  }
-
-  function close() {
-    try {
-      controller.close();
+      ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
     } catch {}
+  };
+  const close = () => {
+    try {
+      ctrl.close();
+    } catch {}
+  };
+  return { stream, send, close };
+}
+
+// ── Auto-populate appendices from project data ─────────────────────────
+async function buildAutoAppendices(
+  project: any,
+  submissions: any[],
+  allAnswers: Record<string, unknown>,
+  marketResearch: string,
+  climateData: string,
+  financialModel: FinancialModel | null,
+): Promise<Record<string, unknown>> {
+  const appendices: Record<string, unknown> = {};
+  const now = new Date().toISOString();
+
+  // Appendix A — Questionnaire summary
+  const questionnaireContent = submissions
+    .filter((s) => s.submitted_at)
+    .map((s) => {
+      const lines = [
+        `**Round ${s.round}** — Submitted ${new Date(s.submitted_at).toLocaleDateString("en-GB")}\n`,
+      ];
+      for (const [key, val] of Object.entries(s.answers || {})) {
+        if (typeof val === "object" && val !== null && !Array.isArray(val))
+          continue; // skip file objects
+        const label = key;
+        const value = Array.isArray(val)
+          ? (val as string[]).join(", ")
+          : typeof val === "boolean"
+            ? val
+              ? "Yes"
+              : "No"
+            : String(val ?? "");
+        if (value) lines.push(`**${label}:** ${value}`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n\n---\n\n");
+
+  appendices["appendix_questionnaire"] = {
+    key: "appendix_questionnaire",
+    title: "Appendix A — Questionnaire Summary",
+    content: questionnaireContent || "No questionnaire submissions found.",
+    ai_generated: false,
+    is_auto_populated: true,
+    last_edited_at: now,
+    approved: true,
+  };
+
+  // Appendix B — Climate data
+  appendices["appendix_climate"] = {
+    key: "appendix_climate",
+    title: "Appendix B — Climate Data",
+    content:
+      climateData || "Climate data not available — GPS coordinates required.",
+    ai_generated: false,
+    is_auto_populated: true,
+    last_edited_at: now,
+    approved: true,
+  };
+
+  // Appendix C — Market research sources
+  const sourceLines = marketResearch
+    .split("\n")
+    .filter((l) => l.match(/\[Source \d+\]/))
+    .map((l) => l.replace(/\[Source \d+\]\s*/, "").trim())
+    .filter(Boolean);
+
+  appendices["appendix_market_sources"] = {
+    key: "appendix_market_sources",
+    title: "Appendix C — Market Research Sources",
+    content: sourceLines.length
+      ? sourceLines.map((s, i) => `${i + 1}. ${s}`).join("\n")
+      : "Market research sources not available.",
+    ai_generated: false,
+    is_auto_populated: true,
+    last_edited_at: now,
+    approved: true,
+  };
+
+  // Appendix D — Financial assumptions
+  const assumptions = financialModel?.assumptions ?? [];
+  appendices["appendix_assumptions"] = {
+    key: "appendix_assumptions",
+    title: "Appendix D — Financial Assumptions Register",
+    content: assumptions.length
+      ? assumptions.map((a, i) => `${i + 1}. ${a}`).join("\n")
+      : "No assumptions recorded.",
+    ai_generated: false,
+    is_auto_populated: true,
+    last_edited_at: now,
+    approved: true,
+  };
+
+  // Placeholder appendices (E-I) — check if file already uploaded in questionnaire
+  const waterFile = Object.values(allAnswers).find(
+    (v: any) => v && typeof v === "object" && v.question_id === "q9",
+  ) as any;
+
+  appendices["appendix_water_quality"] = {
+    key: "appendix_water_quality",
+    title: "Appendix E — Water Quality Report",
+    content: waterFile
+      ? `Water quality report provided by client.\nFile: ${waterFile.filename}\n\n⬡ PLACEHOLDER: Verify and attach the formal laboratory report.`
+      : "⬡ PLACEHOLDER: Water Quality Report\n\nUpload the laboratory EC/TDS/pH analysis report for the water source.\nThis is mandatory for hydroponic projects.",
+    ai_generated: false,
+    is_placeholder: !waterFile,
+    is_auto_populated: !!waterFile,
+    last_edited_at: now,
+    approved: !!waterFile,
+  };
+
+  for (const { key, title, placeholderHint } of [
+    {
+      key: "appendix_soil_analysis",
+      title: "Appendix F — Soil Analysis Report",
+      placeholderHint: "Upload soil test results if applicable.",
+    },
+    {
+      key: "appendix_site_survey",
+      title: "Appendix G — Site Survey / Map",
+      placeholderHint:
+        "Upload land survey, cadastral document, or satellite map with boundaries marked.",
+    },
+    {
+      key: "appendix_supplier_quotes",
+      title: "Appendix H — Equipment Supplier Quotes",
+      placeholderHint:
+        "Attach supplier quotes for greenhouse structure, cooling system, and irrigation equipment.",
+    },
+    {
+      key: "appendix_company_profile",
+      title: "Appendix I — Company / Firm Profile",
+      placeholderHint:
+        "Attach consultant firm profile, past project portfolio, and certifications.",
+    },
+  ]) {
+    appendices[key] = {
+      key,
+      title,
+      content: `⬡ PLACEHOLDER: ${title.replace(/^Appendix [A-Z] — /, "")}\n\n${placeholderHint}`,
+      ai_generated: false,
+      is_placeholder: true,
+      is_auto_populated: false,
+      last_edited_at: now,
+      approved: false,
+    };
   }
 
-  return { stream, send, close };
+  return appendices;
 }
 
 export async function POST(req: NextRequest) {
@@ -83,45 +236,15 @@ export async function POST(req: NextRequest) {
   const allAnswers: Record<string, unknown> =
     submissions?.reduce((acc, s) => ({ ...acc, ...s.answers }), {}) || {};
 
-  if (
-    !submissions ||
-    submissions.length === 0 ||
-    Object.keys(allAnswers).length === 0
-  ) {
+  if (!submissions?.length || !Object.keys(allAnswers).length) {
     return NextResponse.json(
       {
         error:
-          "No questionnaire submissions found. Please collect questionnaire data before generating a report.",
+          "No questionnaire submissions found. Please collect questionnaire data first.",
       },
       { status: 400 },
     );
   }
-
-  const { data: consultantNotes } = await supabase
-    .from("consultant_notes")
-    .select("category, title, content, is_pinned")
-    .eq("project_id", projectId)
-    .order("is_pinned", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const financialModelNotes = (project as any).financial_model_notes
-    ? `[FINANCIAL MODEL NOTES — CONSULTANT OVERRIDE]\n${(project as any).financial_model_notes}`
-    : null;
-
-  const notesForReport =
-    [
-      consultantNotes?.length
-        ? consultantNotes
-            .map(
-              (n) => `[${n.category.toUpperCase()}] ${n.title}:\n${n.content}`,
-            )
-            .join("\n\n")
-        : null,
-      financialModelNotes,
-    ]
-      .filter(Boolean)
-      .join("\n\n") || "No additional consultant research notes provided.";
 
   const { data: existingReport } = await supabase
     .from("reports")
@@ -131,18 +254,15 @@ export async function POST(req: NextRequest) {
 
   const isIncremental = !!(sectionsToGenerate && existingReport);
 
-  // If streaming, set up SSE and run generation async
   if (useStream) {
     const { stream, send, close } = createSSEStream();
-
-    // Run generation in background — don't await
-    runGeneration({
+    runFullPipeline({
       project,
       user,
       supabase,
       currency,
       allAnswers,
-      notesForReport,
+      submissions,
       existingReport,
       isIncremental,
       sectionsToGenerate,
@@ -150,29 +270,28 @@ export async function POST(req: NextRequest) {
       send,
       close,
     }).catch((err) => {
-      console.error("[ReportGen-Stream] Fatal error:", err);
-      send({ type: "error", error: err.message || "Unknown error" });
+      console.error("[ReportGen-PR6] Fatal:", err);
+      send({ type: "error", error: err.message });
       close();
     });
-
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "X-Accel-Buffering": "no", // Disable Nginx buffering
+        "X-Accel-Buffering": "no",
       },
     });
   }
 
-  // Non-streaming path — original behaviour
-  const result = await runGeneration({
+  // Non-streaming
+  const result = await runFullPipeline({
     project,
     user,
     supabase,
     currency,
     allAnswers,
-    notesForReport,
+    submissions,
     existingReport,
     isIncremental,
     sectionsToGenerate,
@@ -180,38 +299,47 @@ export async function POST(req: NextRequest) {
     send: () => {},
     close: () => {},
   });
-
   return NextResponse.json({ success: true, sections: result.generatedKeys });
 }
 
-// ── Core generation logic (shared between streaming and non-streaming) ─
-async function runGeneration({
+// ── Full 6-phase generation pipeline ──────────────────────────────────
+async function runFullPipeline({
   project,
   user,
   supabase,
   currency,
   allAnswers,
-  notesForReport,
+  submissions,
   existingReport,
   isIncremental,
   sectionsToGenerate,
   projectId,
   send,
   close,
-}: {
-  project: any;
-  user: any;
-  supabase: any;
-  currency: string;
-  allAnswers: Record<string, unknown>;
-  notesForReport: string;
-  existingReport: any;
-  isIncremental: boolean;
-  sectionsToGenerate: string[] | undefined;
-  projectId: string;
-  send: (data: object) => void;
-  close: () => void;
-}) {
+}: any) {
+  const { data: consultantNotes } = await supabase
+    .from("consultant_notes")
+    .select("category, title, content, is_pinned")
+    .eq("project_id", projectId)
+    .order("is_pinned", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const notesForReport = consultantNotes?.length
+    ? consultantNotes
+        .map(
+          (n: any) => `[${n.category.toUpperCase()}] ${n.title}:\n${n.content}`,
+        )
+        .join("\n\n")
+    : "No additional consultant research notes provided.";
+
+  // ── Phase 0: Context gathering (parallel) ──────────────────────────
+  send({
+    type: "phase",
+    phase: 0,
+    label: "Gathering market and climate context…",
+  });
+
   let marketResearch: string =
     existingReport?.sections?.context_market_data?.content || "";
   let climateData: string =
@@ -228,11 +356,70 @@ async function runGeneration({
     const gps = parseGPS(project.gps_coordinates || "");
     climateData = gps
       ? await fetchClimateData(gps.lat, gps.lon)
-      : "GPS coordinates not provided — enter them in the project details to get climate data.";
+      : "GPS coordinates not provided.";
   }
 
+  // ── Financial model: override → existing → AI ──────────────────────
+  let financialModel: FinancialModel | null = null;
+  let financialModelSource = "ai_generated";
+  const override = (project as any)
+    .financial_model_override as FinancialModel | null;
+
+  if (override?.capex_total !== undefined) {
+    financialModel = override;
+    financialModelSource = "consultant_override";
+  } else if (isIncremental && existingReport?.financial_model) {
+    financialModel = existingReport.financial_model;
+    financialModelSource = "existing_report";
+  } else {
+    send({
+      type: "generating",
+      section: "financial_projection",
+      label: "Generating financial model…",
+    });
+    const trimmedAnswers = trimAnswersForTask(
+      allAnswers,
+      "financial_projection",
+    );
+    const cropList = (project.crop_types || []).join(", ");
+    financialModel = await callAIJSON<FinancialModel>({
+      task: "financial_projection",
+      variables: {
+        project_title: project.title,
+        region: project.region || "Not specified",
+        country: project.country || "Not specified",
+        currency,
+        crop_types: cropList,
+        project_type: project.project_type || "greenhouse",
+        target_markets:
+          (project.target_market || []).join(", ") || "Local market",
+        agro_tourism: project.project_type === "agro_tourism" ? "Yes" : "No",
+        greenhouse_area_sqm: project.land_size_sqm
+          ? (project.land_size_sqm * 0.35).toFixed(0)
+          : "5000",
+        nethouse_area_sqm: project.land_size_sqm
+          ? (project.land_size_sqm * 0.15).toFixed(0)
+          : "2000",
+        budget_range: project.budget_range || "Not specified",
+        experience_level: project.experience_level || "Not specified",
+        questionnaire_answers: trimmedAnswers,
+      },
+      maxTokens: 2500,
+    });
+  }
+
+  // ── Build base variables shared across all section prompts ─────────
   const cropList = (project.crop_types || []).join(", ");
-  const baseVars = {
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select(
+      "full_name, company_name, logo_url, brand_primary_color, brand_secondary_color, brand_footer_text",
+    )
+    .eq("id", user.id)
+    .single();
+
+  const baseVars: Record<string, string> = {
     project_title: project.title,
     region: project.region || "Not specified",
     country: project.country || "Not specified",
@@ -240,8 +427,8 @@ async function runGeneration({
     crop_types: cropList,
     project_type: project.project_type || "greenhouse",
     target_markets: (project.target_market || []).join(", ") || "Local market",
-    consultant_name: user.email || "Consultant",
-    company_name: "AgriAI Consultancy",
+    consultant_name: profile?.full_name || user.email || "Consultant",
+    company_name: profile?.company_name || "AgriAI Consultancy",
     agro_tourism: project.project_type === "agro_tourism" ? "Yes" : "No",
     gps_coordinates: project.gps_coordinates || "Not provided",
     land_size_sqm: project.land_size_sqm?.toString() || "Not provided",
@@ -253,174 +440,242 @@ async function runGeneration({
       : "2000",
     budget_range: project.budget_range || "Not specified",
     experience_level: project.experience_level || "Not specified",
-    water_source: String(
-      allAnswers["q6"] ?? allAnswers["water_source"] ?? "Not specified",
-    ),
-    water_quality: String(
-      allAnswers["q8"] ?? allAnswers["water_ec_tds"] ?? "Not specified",
-    ),
-    power_source: String(
-      allAnswers["q10"] ?? allAnswers["power_source"] ?? "Not specified",
-    ),
-  };
-
-  // Technical analysis (always needed)
-  let technicalAnalysis: string =
-    existingReport?.sections?.technical_analysis?.content || "";
-  if (!isIncremental || !technicalAnalysis) {
-    const trimmedAnswers = trimAnswersForTask(allAnswers, "technical_analysis");
-    const techResp = await callAI({
-      task: "technical_analysis",
-      variables: { ...baseVars, questionnaire_answers: trimmedAnswers },
-      maxTokens: 1500,
-    });
-    technicalAnalysis = techResp.content;
-  }
-
-  // Financial model: override → existing → AI
-  let financialModel: FinancialModel | null = null;
-  let financialModelSource = "ai_generated";
-  const override = (project as any)
-    .financial_model_override as FinancialModel | null;
-
-  if (override && override.capex_total !== undefined) {
-    financialModel = override;
-    financialModelSource = "consultant_override";
-  } else if (isIncremental && existingReport?.financial_model) {
-    financialModel = existingReport.financial_model as FinancialModel;
-    financialModelSource = "existing_report";
-  } else {
-    const trimmedAnswers = trimAnswersForTask(
-      allAnswers,
-      "financial_projection",
-    );
-    financialModel = await callAIJSON<FinancialModel>({
-      task: "financial_projection",
-      variables: { ...baseVars, questionnaire_answers: trimmedAnswers },
-      maxTokens: 2500,
-    });
-  }
-
-  const trimmedMarket = trimContext(marketResearch, 2500);
-  const trimmedClimate = trimContext(climateData, 1000);
-  const trimmedTechAnalysis = trimContext(technicalAnalysis, 2500);
-
-  const sectionVars = {
-    ...baseVars,
-    technical_analysis: trimmedTechAnalysis,
-    market_research: trimmedMarket,
-    climate_data: trimmedClimate,
+    client_name: project.client_name || "The Client",
+    water_source: String(allAnswers["q6"] ?? "Not specified"),
+    water_quality: String(allAnswers["q8"] ?? "Not specified"),
+    power_source: String(allAnswers["q10"] ?? "Not specified"),
+    market_research: trimContext(marketResearch, 3000),
+    climate_data: trimContext(climateData, 1000),
     financial_model_json: JSON.stringify(financialModel, null, 2),
     capex_total: `${currency} ${financialModel?.capex_total?.toLocaleString() || "0"}`,
     total_annual_revenue: `${currency} ${financialModel?.total_annual_revenue?.toLocaleString() || "0"}`,
     ebitda: `${currency} ${financialModel?.ebitda?.toLocaleString() || "0"}`,
     ebitda_margin: financialModel?.ebitda_margin?.toString() || "0",
     payback_years: financialModel?.payback_years?.toString() || "0",
-    strategic_highlights: `${cropList} production, year-round capability in ${project.country}, ${project.region} location advantage`,
+    strategic_highlights: `${cropList} production in ${project.region}, ${project.country}`,
     consultant_research_notes: notesForReport,
+    questionnaire_answers: serialiseAnswersForPrompt(allAnswers, {
+      maxChars: 1500,
+    }),
+    // Placeholders for upstream section content (filled in Phase 6)
+    introduction_content: "",
+    market_analysis_content: "",
   };
 
-  const sectionKeys: ReportSectionKey[] =
-    (sectionsToGenerate as ReportSectionKey[]) || [
-      "executive_summary",
-      "market_analysis",
-      "business_model",
-      "financial_projection",
-      "risk_mitigation",
-      "conclusion",
-    ];
+  // ── Determine which sections to generate ──────────────────────────
+  const targetSections: ReportSectionKey[] = sectionsToGenerate
+    ? (sectionsToGenerate as ReportSectionKey[])
+    : REPORT_SECTIONS.map((s) => s.key);
 
-  const taskMap: Partial<Record<ReportSectionKey, string>> = {
-    executive_summary: "report_executive_summary",
-    market_analysis: "report_market_analysis",
-    business_model: "report_business_model",
-    financial_projection: "report_financial_projection",
-    risk_mitigation: "report_risk_mitigation",
-    conclusion: "report_conclusion",
+  // Exclude executive_summary from phased generation — it runs in Phase 6
+  // Cast back to ReportSectionKey[] — TypeScript narrows filter(k !== X) to
+  // Exclude<ReportSectionKey, "executive_summary">[] which breaks includes(sc.key).
+  const phasedSections = targetSections.filter(
+    (k) => k !== "executive_summary",
+  ) as ReportSectionKey[];
+  const phaseMap = getSectionsByPhase();
+
+  send({
+    type: "start",
+    sections: targetSections,
+    totalSections: targetSections.length,
+  });
+
+  const sections: Record<string, unknown> = {
+    ...(existingReport?.sections || {}),
   };
-
-  // Notify client which sections are coming
-  send({ type: "start", sections: sectionKeys });
-
-  const sections: Record<string, unknown> = {};
   const generatedKeys: string[] = [];
 
-  for (const key of sectionKeys) {
-    const task = taskMap[key];
-    if (!task) continue;
+  // ── Technical analysis (needed by multiple sections) ───────────────
+  // Only reuse existing analysis for a narrowly-targeted incremental regen
+  // that does NOT include technical_analysis in its explicit target list.
+  // On full regen (sectionsToGenerate = null) OR when technical_analysis is
+  // explicitly targeted, always recompute so updated questionnaire data is
+  // reflected in all downstream sections.
+  const skipTechnicalRegen =
+    isIncremental &&
+    Array.isArray(sectionsToGenerate) &&
+    !(sectionsToGenerate as string[]).includes("technical_analysis");
 
-    // Notify client this section is being generated
-    send({ type: "generating", section: key });
-    console.log(`[ReportGen] Generating section: ${key}`);
+  let technicalAnalysis = skipTechnicalRegen
+    ? existingReport?.sections?.technical_analysis?.content || ""
+    : "";
+  if (!technicalAnalysis) {
+    send({
+      type: "generating",
+      section: "technical_analysis",
+      label: "Technical analysis…",
+    });
+    const resp = await callAI({
+      task: "technical_analysis",
+      variables: {
+        ...baseVars,
+        questionnaire_answers: trimAnswersForTask(
+          allAnswers,
+          "technical_analysis",
+        ),
+      },
+      maxTokens: 1500,
+    });
+    technicalAnalysis = resp.content;
+    sections["technical_analysis"] = {
+      key: "technical_analysis",
+      content: technicalAnalysis,
+      ai_generated: true,
+      last_edited_at: new Date().toISOString(),
+      approved: false,
+    };
+  }
+  baseVars.technical_analysis = trimContext(technicalAnalysis, 2500);
+
+  // ── Phases 1-5: generate sections in phase order ───────────────────
+  for (let phase = 1; phase <= 5; phase++) {
+    const phaseSections = (phaseMap.get(phase as any) || []).filter(
+      (sc) => phasedSections.includes(sc.key) && sc.aiTask !== null,
+    );
+
+    if (!phaseSections.length) continue;
+
+    send({ type: "phase", phase, label: `Phase ${phase} sections…` });
+
+    // Within each phase, can run in parallel (Phase 2, 4, 5 have independent sections)
+    const canParallel = phase !== 1 && phase !== 3; // Phase 1 & 3 are sequential
+    const tasks = phaseSections.map((sc) => async () => {
+      send({ type: "generating", section: sc.key, label: sc.title });
+
+      const sectionVars = {
+        ...baseVars,
+        questionnaire_answers: trimAnswersForTask(
+          allAnswers,
+          sc.aiTask as AITask,
+          1200,
+        ),
+      };
+
+      try {
+        const resp = await callAI({
+          task: sc.aiTask as AITask,
+          variables: sectionVars,
+          maxTokens: sc.maxTokens,
+        });
+
+        const sectionData = {
+          key: sc.key,
+          title: sc.title,
+          content: resp.content,
+          ai_generated: true,
+          has_placeholders: sc.hasPlaceholders,
+          last_edited_at: new Date().toISOString(),
+          approved: false,
+        };
+
+        sections[sc.key] = sectionData;
+        generatedKeys.push(sc.key);
+
+        // Persist after each section so user can see it immediately
+        await supabase.from("reports").upsert(
+          {
+            project_id: projectId,
+            sections: { ...sections },
+            financial_model: financialModel,
+            status: "draft",
+          },
+          { onConflict: "project_id" },
+        );
+
+        send({
+          type: "section_complete",
+          section: sc.key,
+          content: resp.content,
+        });
+
+        // Capture key upstream sections for Phase 6 executive summary
+        if (sc.key === "introduction")
+          baseVars.introduction_content = trimContext(resp.content, 800);
+        if (sc.key === "market_analysis")
+          baseVars.market_analysis_content = trimContext(resp.content, 1000);
+      } catch (err) {
+        console.error(`[ReportGen-PR6] Section ${sc.key} failed:`, err);
+        sections[sc.key] = {
+          key: sc.key,
+          title: sc.title,
+          content: `> **[Section Generation Failed]**\n\nClick "Regenerate" to retry.`,
+          ai_generated: true,
+          last_edited_at: new Date().toISOString(),
+          approved: false,
+        };
+        send({
+          type: "section_error",
+          section: sc.key,
+          error: err instanceof Error ? err.message : "Unknown",
+        });
+      }
+    });
+
+    if (canParallel) {
+      await Promise.all(tasks.map((t) => t()));
+    } else {
+      for (const task of tasks) await task();
+    }
+  }
+
+  // ── Phase 6: Executive Summary (LAST — synthesises everything) ─────
+  if (targetSections.includes("executive_summary")) {
+    const execConfig = REPORT_SECTIONS.find(
+      (s) => s.key === "executive_summary",
+    )!;
+    send({
+      type: "generating",
+      section: "executive_summary",
+      label: "1. Executive Summary (synthesising all sections)…",
+    });
 
     try {
-      const trimmedAnswers = trimAnswersForTask(
-        allAnswers,
-        task as import("@/types").AITask,
-        1200,
-      );
       const resp = await callAI({
-        task: task as import("@/types").AITask,
-        variables: { ...sectionVars, questionnaire_answers: trimmedAnswers },
-        maxTokens: 16000,
+        task: "report_executive_summary",
+        variables: {
+          ...baseVars,
+          questionnaire_answers: trimAnswersForTask(
+            allAnswers,
+            "report_executive_summary",
+            800,
+          ),
+          // Now has real upstream content from phases 1-5
+          introduction_content:
+            baseVars.introduction_content || trimContext(marketResearch, 400),
+          market_analysis_content:
+            baseVars.market_analysis_content ||
+            trimContext(marketResearch, 600),
+        },
+        maxTokens: execConfig.maxTokens,
       });
 
-      const sectionData = {
-        key,
+      sections["executive_summary"] = {
+        key: "executive_summary",
+        title: execConfig.title,
         content: resp.content,
         ai_generated: true,
+        has_placeholders: true,
         last_edited_at: new Date().toISOString(),
         approved: false,
       };
-
-      sections[key] = sectionData;
-      generatedKeys.push(key);
-
-      // Persist this section immediately so the UI can show it
-      const updatedSections = {
-        ...(existingReport?.sections || {}),
-        ...sections,
-      };
-      await supabase.from("reports").upsert(
-        {
-          project_id: projectId,
-          sections: updatedSections,
-          financial_model: financialModel,
-          status: "draft",
-        },
-        { onConflict: "project_id" },
-      );
-
-      // Notify client section is complete with content
-      send({ type: "section_complete", section: key, content: resp.content });
+      generatedKeys.push("executive_summary");
+      send({
+        type: "section_complete",
+        section: "executive_summary",
+        content: resp.content,
+      });
     } catch (err) {
-      console.error(`[ReportGen] Failed section ${key}:`, err);
-      const errContent = `> **[Section Generation Failed]**\n\nThis section could not be generated: ${err instanceof Error ? err.message : "Unknown error"}.\n\nClick "Regenerate" to retry.`;
-
-      sections[key] = {
-        key,
-        content: errContent,
-        ai_generated: true,
-        last_edited_at: new Date().toISOString(),
-        approved: false,
-      };
-
+      console.error("[ReportGen-PR6] Executive summary failed:", err);
       send({
         type: "section_error",
-        section: key,
-        error: err instanceof Error ? err.message : "Unknown error",
+        section: "executive_summary",
+        error: err instanceof Error ? err.message : "Unknown",
       });
     }
   }
 
-  // Add context sections
-  sections["technical_analysis"] = {
-    key: "technical_analysis",
-    content: technicalAnalysis,
-    ai_generated: true,
-    last_edited_at: new Date().toISOString(),
-    approved: false,
-  };
+  // ── Context sections (always saved) ───────────────────────────────
   sections["context_market_data"] = {
     key: "context_market_data",
     content: marketResearch,
@@ -438,15 +693,21 @@ async function runGeneration({
     approved: false,
   };
 
-  // Branding
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(
-      "full_name, company_name, logo_url, brand_primary_color, brand_secondary_color, brand_footer_text",
-    )
-    .eq("id", user.id)
-    .single();
+  // ── Auto-populate appendices ───────────────────────────────────────
+  if (!sectionsToGenerate) {
+    // only on full generation, not section regeneration
+    const appendices = await buildAutoAppendices(
+      project,
+      submissions || [],
+      allAnswers,
+      marketResearch,
+      climateData,
+      financialModel,
+    );
+    Object.assign(sections, appendices);
+  }
 
+  // ── Branding ──────────────────────────────────────────────────────
   const branding = {
     consultant_name: profile?.full_name || user.email || "Consultant",
     company_name: profile?.company_name || "AgriAI Consultancy",
@@ -456,16 +717,11 @@ async function runGeneration({
     footer_text: profile?.brand_footer_text || null,
   };
 
-  // Final upsert with all sections + branding
-  const finalSections = {
-    ...(existingReport?.sections || {}),
-    ...sections,
-  };
-
+  // ── Final save ────────────────────────────────────────────────────
   await supabase.from("reports").upsert(
     {
       project_id: projectId,
-      sections: finalSections,
+      sections,
       financial_model: financialModel,
       branding,
       status: "draft",
@@ -483,18 +739,16 @@ async function runGeneration({
     eventType: "report_generated",
     actor: "ai",
     title: sectionsToGenerate
-      ? `Report section regenerated: ${sectionsToGenerate.join(", ")}`
-      : "Full report draft generated",
-    detail: `${sectionKeys.length} sections · Financial model: ${financialModelSource} · Currency: ${currency}`,
+      ? `Section regenerated: ${sectionsToGenerate.join(", ")}`
+      : `Full report generated (${generatedKeys.length} sections)`,
+    detail: `${generatedKeys.length} sections · FM: ${financialModelSource} · ${currency}`,
     metadata: {
-      sections_generated: sectionKeys,
-      is_incremental: isIncremental,
+      sections_generated: generatedKeys,
       currency,
       financial_model_source: financialModelSource,
     },
   });
 
-  // Signal complete
   send({ type: "complete", sections: generatedKeys });
   close();
 

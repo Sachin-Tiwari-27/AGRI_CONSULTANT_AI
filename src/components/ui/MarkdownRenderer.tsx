@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { marked, Renderer } from "marked";
+import { marked, Renderer, type Tokens } from "marked";
 
 interface Props {
   content: string;
@@ -50,9 +50,19 @@ function parseMarkdown(md: string): string {
 
   const renderer = new Renderer();
 
-  // Wrap tables in an overflow div so wide tables scroll horizontally
-  renderer.table = (header: string, body: string) => {
-    return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+  // Wrap tables in an overflow div so wide tables scroll horizontally.
+  // marked v7+ passes a single Table token object; extract text from each cell.
+  renderer.table = (token: Tokens.Table): string => {
+    const headerCells = token.header
+      .map((cell) => `<th>${cell.text}</th>`)
+      .join("");
+    const bodyRows = token.rows
+      .map(
+        (row) =>
+          `<tr>${row.map((cell) => `<td>${cell.text}</td>`).join("")}</tr>`,
+      )
+      .join("");
+    return `<div class="table-wrapper"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
   };
 
   marked.setOptions({
