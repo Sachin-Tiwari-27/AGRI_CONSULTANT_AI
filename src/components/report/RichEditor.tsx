@@ -29,8 +29,9 @@ import {
   Columns,
   AlertTriangle,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 // ── Custom Placeholder Node ────────────────────────────────────────────
 // Renders ⬡ PLACEHOLDER blocks that the consultant fills in manually.
@@ -186,6 +187,9 @@ export function RichEditor({
   className = "",
 }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [tick, setTick] = useState(0);
+  const forceUpdate = useCallback(() => setTick(t => t + 1), []);
+  
   const onChangeFn = useRef(onChange);
   useEffect(() => {
     onChangeFn.current = onChange;
@@ -212,6 +216,11 @@ export function RichEditor({
       onUpdate: ({ editor }) => {
         const html = editor.getHTML();
         onChangeFn.current(htmlToMarkdown(html));
+      },
+      onSelectionUpdate: () => {
+        // This forces the React component to re-render when the selection changes
+        // so that isActive("table") checks in the toolbar/footer are accurate.
+        forceUpdate();
       },
       editorProps: {
         attributes: {
@@ -390,18 +399,87 @@ export function RichEditor({
           <ToolDivider />
 
           {/* Table */}
-          <ToolBtn
-            title="Insert table"
-            onClick={() =>
-              editor
-                .chain()
-                .focus()
-                .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                .run()
-            }
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-          </ToolBtn>
+          <div className="relative group">
+            <ToolBtn
+              title="Table actions"
+              active={editor.isActive("table")}
+              onClick={() => {}}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+            </ToolBtn>
+            
+            {/* Hover bridge to prevent dropdown from disappearing */}
+            <div className="absolute top-full left-0 w-full h-2 z-50 hidden group-hover:block" />
+
+            {editor.isActive("table") ? (
+              <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 w-48 hidden group-hover:block animate-in fade-in zoom-in duration-100">
+                {[
+                  {
+                    label: "Add Row Above",
+                    fn: () => editor.chain().focus().addRowBefore().run(),
+                  },
+                  {
+                    label: "Add Row Below",
+                    fn: () => editor.chain().focus().addRowAfter().run(),
+                  },
+                  {
+                    label: "Add Column Left",
+                    fn: () => editor.chain().focus().addColumnBefore().run(),
+                  },
+                  {
+                    label: "Add Column Right",
+                    fn: () => editor.chain().focus().addColumnAfter().run(),
+                  },
+                  { type: "divider" },
+                  {
+                    label: "Delete Row",
+                    fn: () => editor.chain().focus().deleteRow().run(),
+                  },
+                  {
+                    label: "Delete Column",
+                    fn: () => editor.chain().focus().deleteColumn().run(),
+                  },
+                  {
+                    label: "Delete Table",
+                    fn: () => editor.chain().focus().deleteTable().run(),
+                  },
+                ].map((item, idx) =>
+                  item.type === "divider" ? (
+                    <div key={idx} className="h-px bg-slate-100 my-1" />
+                  ) : (
+                    <button
+                      key={idx}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        (item as any).fn();
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      {(item as any).label}
+                    </button>
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 w-48 hidden group-hover:block animate-in fade-in zoom-in duration-100">
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    editor
+                      .chain()
+                      .focus()
+                      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                      .run();
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Insert Table (3x3)
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Image */}
           <ToolBtn
@@ -451,6 +529,10 @@ export function RichEditor({
                   label: "Greenhouse Layout Plan",
                   hint: "Upload site plan or CAD drawing",
                 },
+                {
+                  label: "Financial Chart / Graph",
+                  hint: "Upload ROI or cash flow chart",
+                },
                 { label: "Gantt Chart", hint: "Upload project timeline" },
                 {
                   label: "Equipment Supplier Quotes",
@@ -473,7 +555,10 @@ export function RichEditor({
                 <button
                   key={label}
                   type="button"
-                  onClick={() => insertPlaceholder(label, hint)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertPlaceholder(label, hint);
+                  }}
                   className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-amber-50 hover:text-amber-800 transition-colors"
                 >
                   ⬡ {label}
@@ -493,39 +578,34 @@ export function RichEditor({
       <EditorContent editor={editor} />
 
       {/* ── Table controls (shown when cursor is in a table) ── */}
-      {!readOnly && editor.isActive("table") && (
-        <div className="flex items-center gap-1 px-3 py-2 border-t border-slate-100 bg-slate-50 text-xs flex-wrap">
-          <span className="text-slate-500 font-medium mr-1">Table:</span>
+      {!readOnly && (editor.isActive("table") || editor.isActive("tableCell") || editor.isActive("tableHeader") || editor.can().deleteTable()) && (
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-amber-100 bg-amber-50/50 text-[11px] flex-wrap">
+          <span className="text-amber-700 font-bold uppercase tracking-wider text-[9px] mr-2 flex items-center gap-1">
+            <TableIcon className="w-3 h-3" /> Table Active:
+          </span>
           {[
             {
-              label: "Add col →",
-              fn: () => editor.chain().focus().addColumnAfter().run(),
-            },
-            {
-              label: "← Add col",
-              fn: () => editor.chain().focus().addColumnBefore().run(),
-            },
-            {
-              label: "Del col",
-              fn: () => editor.chain().focus().deleteColumn().run(),
-            },
-            {
-              label: "Add row ↓",
+              label: "+ Row",
               fn: () => editor.chain().focus().addRowAfter().run(),
             },
             {
-              label: "↑ Add row",
-              fn: () => editor.chain().focus().addRowBefore().run(),
+              label: "+ Col",
+              fn: () => editor.chain().focus().addColumnAfter().run(),
             },
             {
-              label: "Del row",
+              label: "- Row",
               fn: () => editor.chain().focus().deleteRow().run(),
             },
             {
-              label: "Del table",
-              fn: () => editor.chain().focus().deleteTable().run(),
+              label: "- Col",
+              fn: () => editor.chain().focus().deleteColumn().run(),
             },
-          ].map(({ label, fn }) => (
+            {
+              label: "Delete",
+              fn: () => editor.chain().focus().deleteTable().run(),
+              danger: true,
+            },
+          ].map(({ label, fn, danger }) => (
             <button
               key={label}
               type="button"
@@ -533,7 +613,12 @@ export function RichEditor({
                 e.preventDefault();
                 fn();
               }}
-              className="px-2 py-0.5 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+              className={cn(
+                "px-2.5 py-1 rounded-md border shadow-sm transition-all font-medium",
+                danger
+                  ? "border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-300"
+                  : "border-amber-200 bg-white text-amber-700 hover:bg-amber-100 hover:border-amber-300"
+              )}
             >
               {label}
             </button>

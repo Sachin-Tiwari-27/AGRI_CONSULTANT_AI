@@ -11,17 +11,14 @@
 
 import { marked, Renderer } from "marked";
 import TurndownService from "turndown";
+// @ts-ignore
+import { gfm } from "turndown-plugin-gfm";
 
 // ── Markdown → HTML (for loading into Tiptap) ─────────────────────────
-const renderer = new Renderer();
-
-// Wrap tables in an overflow div so wide tables scroll horizontally
-renderer.table = (header: string, body: string) => {
-  return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
-};
+// No custom table renderer here — Tiptap needs raw <table> tags.
+// Wrapping is handled in MarkdownRenderer.tsx specifically for preview.
 
 marked.setOptions({
-  renderer,
   gfm: true, // GitHub Flavored Markdown (tables, strikethrough)
   breaks: false,
 });
@@ -30,7 +27,15 @@ export function markdownToHtml(markdown: string): string {
   if (!markdown || !markdown.trim()) return "<p></p>";
   try {
     // marked.parse returns string when not using async
-    return marked.parse(markdown) as string;
+    let html = marked.parse(markdown) as string;
+    
+    // Restore placeholder nodes from markdown text
+    html = html.replace(
+      /<p>⬡ PLACEHOLDER: (.*?)<\/p>/g,
+      '<div data-type="placeholder" data-label="$1"></div>'
+    );
+    
+    return html;
   } catch (err) {
     console.error("[markdown-convert] markdownToHtml failed:", err);
     return `<p>${markdown}</p>`;
@@ -44,6 +49,7 @@ const turndown = new TurndownService({
   bulletListMarker: "-",
   hr: "---",
 });
+turndown.use(gfm);
 
 // Preserve table-wrapper divs — just output their inner table
 turndown.addRule("tableWrapper", {
