@@ -17,54 +17,51 @@ import {
   TrendingUp,
   Clock,
   DollarSign,
-  ChevronRight,
   Sparkles,
   Globe,
   AlertCircle,
   BookOpen,
   Loader2,
+  Users,
+  Settings,
+  Target,
+  Megaphone,
+  Calendar,
+  ShieldCheck,
+  Heart,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
+  PaperclipIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import {
+  REPORT_SECTIONS,
+  REPORT_APPENDICES,
+  type SectionConfig,
+} from "@/lib/report-section-config";
 import type { Report, ReportSectionKey, Project } from "@/types";
 
-const SECTIONS = [
-  {
-    key: "executive_summary" as ReportSectionKey,
-    title: "Executive Summary",
-    desc: "High-level overview and strategic rationale.",
-    icon: BookOpen,
-  },
-  {
-    key: "market_analysis" as ReportSectionKey,
-    title: "Market & Economic Analysis",
-    desc: "Demand, pricing strategy, and competitive landscape.",
-    icon: Globe,
-  },
-  {
-    key: "business_model" as ReportSectionKey,
-    title: "Business Model",
-    desc: "Revenue streams, distribution, operations.",
-    icon: BarChart3,
-  },
-  {
-    key: "financial_projection" as ReportSectionKey,
-    title: "Financial Projections",
-    desc: "CAPEX, operating costs, revenue forecasts, ROI.",
-    icon: TrendingUp,
-  },
-  {
-    key: "risk_mitigation" as ReportSectionKey,
-    title: "Risk Assessment",
-    desc: "Climate, operational, and commercial risks.",
-    icon: AlertCircle,
-  },
-  {
-    key: "conclusion" as ReportSectionKey,
-    title: "Conclusion & Recommendations",
-    desc: "Feasibility verdict and next steps.",
-    icon: CheckCircle,
-  },
-];
+// Icon map for section keys
+const SECTION_ICONS: Record<string, React.ElementType> = {
+  executive_summary: BookOpen,
+  introduction: FileText,
+  project_overview: Users,
+  market_analysis: Globe,
+  target_market: Target,
+  competitive_analysis: TrendingUp,
+  business_model: BarChart3,
+  revenue_streams: DollarSign,
+  marketing_sales_plan: Megaphone,
+  proposed_machinery: Settings,
+  proposed_timelines: Calendar,
+  quality_assurance: ShieldCheck,
+  financial_projection: Calculator,
+  risk_mitigation: AlertCircle,
+  benefits_impact: Sparkles,
+  csr: Heart,
+  conclusion: CheckCircle,
+};
 
 interface Props {
   project: Project;
@@ -86,50 +83,48 @@ export function ReportTab({
   onUpdateProject,
 }: Props) {
   const [view, setView] = useState<"builder" | "preview">("builder");
-
-  // ── PR-3: Streaming state ─────────────────────────────────────────
-  // Tracks which section is currently being generated for the streaming UI.
-  // Set by the streaming generate flow, cleared when generation finishes.
   const [streamingSection, setStreamingSection] = useState<string | null>(null);
   const [streamingReport, setStreamingReport] = useState<Report | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [showAppendices, setShowAppendices] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const currency = (project as any).currency || "USD";
   const fm = report?.financial_model;
-
   const displayReport = streamingReport ?? report;
+
+  // Count completed main sections (exclude appendices and context)
+  const mainSectionKeys = REPORT_SECTIONS.map((s) => s.key);
   const generatedCount = displayReport
-    ? Object.keys(displayReport.sections).filter(
-        (k) =>
-          ![
-            "context_market_data",
-            "context_climate_data",
-            "technical_analysis",
-          ].includes(k),
-      ).length
+    ? mainSectionKeys.filter((k) => !!displayReport.sections[k]?.content).length
     : 0;
   const approvedCount = displayReport
-    ? SECTIONS.filter((s) => displayReport.sections[s.key]?.approved).length
+    ? mainSectionKeys.filter((k) => displayReport.sections[k]?.approved).length
     : 0;
 
-  // ── PR-3: Streaming generate ──────────────────────────────────────
-  // Calls the report generate endpoint and reads SSE events, updating
-  // the report in the UI section-by-section as each one completes.
+  // Auto-populated appendices
+  const appendixAutoKeys = REPORT_APPENDICES.filter((a) => a.autoPopulated).map(
+    (a) => a.key,
+  );
+  const appendixFilledCount = displayReport
+    ? REPORT_APPENDICES.filter(
+        (a) =>
+          displayReport.sections[a.key]?.content &&
+          !displayReport.sections[a.key]?.is_placeholder,
+      ).length
+    : 0;
+
+  // ── Streaming generate ──────────────────────────────────────────────
   async function generateReportStreaming(specificSection?: ReportSectionKey) {
     if (!hasSubmission) {
-      alert("Please collect questionnaire data before generating a report.");
+      alert("Please collect questionnaire data first.");
       return;
     }
 
-    // Abort any previous stream
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-
     setIsStreaming(true);
     setStreamingSection(null);
-
-    // Start with the current report as a base so existing sections show
     setStreamingReport(report ? { ...report } : null);
 
     try {
@@ -146,12 +141,11 @@ export function ReportTab({
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Generation failed");
+        throw new Error(err.error || "Failed");
       }
 
       const contentType = res.headers.get("content-type") || "";
 
-      // ── SSE streaming path ────────────────────────────────────────
       if (contentType.includes("text/event-stream")) {
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
@@ -169,15 +163,8 @@ export function ReportTab({
             if (!line.startsWith("data: ")) continue;
             try {
               const event = JSON.parse(line.slice(6));
-
-              if (event.type === "start") {
-                // Sections about to be generated
-              }
-
-              if (event.type === "generating") {
+              if (event.type === "generating")
                 setStreamingSection(event.section);
-              }
-
               if (event.type === "section_complete") {
                 setStreamingSection(null);
                 setStreamingReport((prev) => {
@@ -197,9 +184,7 @@ export function ReportTab({
                   };
                 });
               }
-
               if (event.type === "complete") {
-                // Fetch the fully-saved report from DB
                 const pRes = await fetch(`/api/projects/${project.id}`);
                 const updated = await pRes.json();
                 const finalReport = updated.reports?.[0] ?? null;
@@ -211,20 +196,10 @@ export function ReportTab({
                 setIsStreaming(false);
                 setStreamingSection(null);
               }
-
-              if (event.type === "section_error") {
-                console.error(
-                  `[ReportTab] Section failed: ${event.section}`,
-                  event.error,
-                );
-              }
-            } catch {
-              // Malformed SSE line — skip
-            }
+            } catch {}
           }
         }
       } else {
-        // ── Fallback: non-streaming response (backwards compat) ──────
         const pRes = await fetch(`/api/projects/${project.id}`);
         const updated = await pRes.json();
         if (updated.reports?.[0]) onUpdateReport(updated.reports[0]);
@@ -234,17 +209,11 @@ export function ReportTab({
       }
     } catch (err: any) {
       if (err.name === "AbortError") return;
-      console.error("[ReportTab] Streaming error:", err);
       alert(err.message || "Report generation failed");
       setIsStreaming(false);
       setStreamingSection(null);
       setStreamingReport(null);
     }
-  }
-
-  // Wrap the parent's onGenerateReport to use streaming
-  function handleGenerate(section?: ReportSectionKey) {
-    generateReportStreaming(section);
   }
 
   return (
@@ -256,7 +225,8 @@ export function ReportTab({
             Report Builder
           </h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Generate, edit, and publish the client-ready feasibility report.
+            Generate, edit, and publish the {REPORT_SECTIONS.length}-section
+            feasibility report.
           </p>
         </div>
         {displayReport && (
@@ -275,7 +245,7 @@ export function ReportTab({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => handleGenerate()}
+              onClick={() => generateReportStreaming()}
               loading={isStreaming}
               disabled={isStreaming}
             >
@@ -288,7 +258,7 @@ export function ReportTab({
         )}
       </div>
 
-      {/* No report yet */}
+      {/* No report + not streaming */}
       {!displayReport && !isStreaming && (
         <div className="space-y-5">
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-green-900 p-8">
@@ -300,7 +270,7 @@ export function ReportTab({
                     <Sparkles className="w-4 h-4 text-green-400" />
                   </div>
                   <span className="text-xs font-bold uppercase tracking-widest text-green-400">
-                    AI Report Generator
+                    AI Report Generator — {REPORT_SECTIONS.length} Sections
                   </span>
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">
@@ -308,12 +278,12 @@ export function ReportTab({
                 </h3>
                 <p className="text-slate-300 text-sm max-w-md">
                   {hasSubmission
-                    ? "Questionnaire data received. Sections appear in real-time as they complete."
+                    ? "Sections appear in real-time as they complete. Matches the Zaher Farm professional report format."
                     : "Collect the questionnaire first to enable report generation."}
                 </p>
               </div>
               <Button
-                onClick={() => handleGenerate()}
+                onClick={() => generateReportStreaming()}
                 loading={isStreaming}
                 disabled={!hasSubmission || isStreaming}
                 className="flex-shrink-0 bg-green-600 hover:bg-green-500 border-green-500 text-white"
@@ -325,9 +295,10 @@ export function ReportTab({
             </div>
           </div>
 
+          {/* Section grid preview */}
           <div className="grid gap-3">
-            {SECTIONS.map((sec) => {
-              const Icon = sec.icon;
+            {REPORT_SECTIONS.map((sec) => {
+              const Icon = SECTION_ICONS[sec.key] || FileText;
               return (
                 <div
                   key={sec.key}
@@ -340,18 +311,32 @@ export function ReportTab({
                     <h4 className="text-sm font-semibold text-slate-900">
                       {sec.title}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">{sec.desc}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {sec.description}
+                    </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={() => handleGenerate(sec.key)}
-                    disabled={!hasSubmission || isStreaming}
-                    loading={isStreaming && streamingSection === sec.key}
-                  >
-                    {hasSubmission ? "Generate Section" : "Awaiting Data"}
-                  </Button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {sec.hasPlaceholders && (
+                      <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        Has placeholders
+                      </span>
+                    )}
+                    {sec.autoPopulated && (
+                      <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        Auto-populated
+                      </span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => generateReportStreaming(sec.key)}
+                      disabled={!hasSubmission || isStreaming}
+                      loading={isStreaming && streamingSection === sec.key}
+                    >
+                      Generate
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -359,10 +344,10 @@ export function ReportTab({
         </div>
       )}
 
-      {/* Streaming — show partial report while generating */}
+      {/* Streaming progress (no report yet) */}
       {isStreaming && !displayReport && (
         <div className="space-y-3">
-          {SECTIONS.map((sec) => {
+          {REPORT_SECTIONS.map((sec) => {
             const isActive = streamingSection === sec.key;
             const isDone = !!streamingReport?.sections[sec.key]?.content;
             return (
@@ -384,16 +369,16 @@ export function ReportTab({
                   ) : (
                     <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0" />
                   )}
-                  <span className="text-sm font-medium text-slate-800">
+                  <span className="text-sm font-medium text-slate-800 truncate">
                     {sec.title}
                   </span>
                   {isActive && (
-                    <span className="text-xs text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full flex-shrink-0">
                       Generating…
                     </span>
                   )}
                   {isDone && (
-                    <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full flex-shrink-0">
                       Complete
                     </span>
                   )}
@@ -413,13 +398,13 @@ export function ReportTab({
               <div className="flex-1 grid grid-cols-3 gap-4 min-w-[280px]">
                 <StatusPill
                   label="Sections"
-                  value={`${generatedCount} / ${SECTIONS.length}`}
-                  active={generatedCount === SECTIONS.length}
+                  value={`${generatedCount} / ${REPORT_SECTIONS.length}`}
+                  active={generatedCount === REPORT_SECTIONS.length}
                 />
                 <StatusPill
                   label="Approved"
-                  value={`${approvedCount} / ${SECTIONS.length}`}
-                  active={approvedCount === SECTIONS.length}
+                  value={`${approvedCount} / ${REPORT_SECTIONS.length}`}
+                  active={approvedCount === REPORT_SECTIONS.length}
                 />
                 <StatusPill
                   label="Status"
@@ -446,14 +431,106 @@ export function ReportTab({
           </div>
 
           {view === "builder" ? (
-            <ReportEditor
-              report={displayReport}
-              project={project}
-              projectId={project.id}
-              onUpdate={onUpdateReport}
-              onProjectUpdate={onUpdateProject}
-              streamingSection={streamingSection}
-            />
+            <>
+              <ReportEditor
+                report={displayReport}
+                project={project}
+                projectId={project.id}
+                onUpdate={onUpdateReport}
+                onProjectUpdate={onUpdateProject}
+                streamingSection={streamingSection}
+              />
+
+              {/* Appendices panel */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => setShowAppendices((s) => !s)}
+                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <PaperclipIcon className="w-4 h-4 text-slate-500" />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Appendices
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {appendixFilledCount} of {REPORT_APPENDICES.length}{" "}
+                        completed · 4 auto-populated · 5 need consultant input
+                      </p>
+                    </div>
+                  </div>
+                  {showAppendices ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                {showAppendices && (
+                  <div className="border-t border-slate-100 divide-y divide-slate-50">
+                    {REPORT_APPENDICES.map((appendix) => {
+                      const section = displayReport.sections[appendix.key];
+                      const hasContent =
+                        !!section?.content && !(section as any).is_placeholder;
+
+                      return (
+                        <div
+                          key={appendix.key}
+                          className="px-5 py-3 flex items-center gap-3"
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              hasContent
+                                ? "bg-green-100"
+                                : appendix.placeholder
+                                  ? "bg-amber-100"
+                                  : "bg-blue-100"
+                            }`}
+                          >
+                            {hasContent ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            ) : appendix.placeholder ? (
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                            ) : (
+                              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">
+                              {appendix.title}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {hasContent
+                                ? "Content available"
+                                : appendix.autoPopulated
+                                  ? "Auto-populated from project data"
+                                  : appendix.placeholder
+                                    ? "Awaiting consultant upload"
+                                    : ""}
+                            </p>
+                          </div>
+                          <span
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
+                              hasContent
+                                ? "bg-green-50 text-green-700"
+                                : appendix.autoPopulated
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {hasContent
+                              ? "Done"
+                              : appendix.autoPopulated
+                                ? "Auto"
+                                : "Add content"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <ReportPreview report={displayReport} currency={currency} />
           )}
@@ -502,9 +579,6 @@ function ReportPreview({
   report: Report;
   currency: string;
 }) {
-  const sectionKeys = SECTIONS.map((s) => s.key).filter(
-    (k) => report.sections[k],
-  );
   return (
     <div className="space-y-6">
       <div
@@ -533,12 +607,13 @@ function ReportPreview({
           {report.status === "published" ? "Published" : "Draft"}
         </div>
       </div>
-      {sectionKeys.map((key) => {
-        const section = report.sections[key]!;
-        const meta = SECTIONS.find((s) => s.key === key);
-        const Icon = meta?.icon || FileText;
+
+      {REPORT_SECTIONS.map((sec) => {
+        const section = report.sections[sec.key];
+        if (!section?.content) return null;
+        const Icon = SECTION_ICONS[sec.key] || FileText;
         return (
-          <Card key={key}>
+          <Card key={sec.key}>
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div
@@ -552,7 +627,7 @@ function ReportPreview({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    {meta?.title || key}
+                    {sec.title}
                   </p>
                   {section.approved && (
                     <p className="text-xs text-green-600 font-medium">

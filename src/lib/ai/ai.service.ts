@@ -1,6 +1,7 @@
 import type { AIRequest, AIResponse, AIProvider, AITask } from "@/types";
 import { buildPrompt } from "./prompts.store";
 import { serialiseAnswersForPrompt } from "@/lib/utils";
+import { SECTION_TASK_TOKENS } from "@/lib/report-section-config";
 
 // ── Provider configuration ────────────────────────────────────────────
 const PROVIDER_CONFIG: Record<
@@ -10,7 +11,7 @@ const PROVIDER_CONFIG: Record<
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
     apiKeyEnv: "OPENROUTER_API_KEY",
-    defaultModel: "minimax/minimax-m2.5:free",
+    defaultModel: "openrouter/owl-alpha",
   },
   anthropic: {
     baseURL: "https://api.anthropic.com/v1",
@@ -31,37 +32,43 @@ const PROVIDER_CONFIG: Record<
 
 // ── Per-task model overrides ──────────────────────────────────────────
 const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
-  clarification_check: "minimax/minimax-m2.5:free",
-  followup_questions: "minimax/minimax-m2.5:free",
+  clarification_check: "nvidia/nemotron-3-super-120b-a12b:free",
+  followup_questions: "openrouter/owl-alpha",
   financial_projection: "openai/gpt-oss-120b:free",
   call_brief_summary: "openai/gpt-oss-120b:free",
   climate_analysis: "minimax/minimax-m2.5:free",
   technical_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
   market_research: "minimax/minimax-m2.5:free",
+  report_introduction: "openrouter/owl-alpha",
+  report_project_overview: "inclusionai/ring-2.6-1t:free",
+  report_target_market: "openrouter/owl-alpha",
+  report_competitive_analysis: "openai/gpt-oss-120b:free",
+  report_revenue_streams: "inclusionai/ring-2.6-1t:free",
+  report_marketing_sales_plan: "openrouter/owl-alpha",
+  report_proposed_machinery: "inclusionai/ring-2.6-1t:free",
+  report_proposed_timelines: "openrouter/owl-alpha",
+  report_quality_assurance: "openai/gpt-oss-120b:free",
+  report_benefits_impact: "inclusionai/ring-2.6-1t:free",
+  report_csr: "openai/gpt-oss-120b:free",
   report_executive_summary: "openai/gpt-oss-120b:free",
   report_market_analysis: "nvidia/nemotron-3-super-120b-a12b:free",
   report_business_model: "openai/gpt-oss-120b:free",
-  report_financial_projection: "nvidia/nemotron-3-super-120b-a12b:free",
+  report_financial_projection: "openrouter/owl-alpha",
   report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_conclusion: "openai/gpt-oss-120b:free",
+  report_conclusion: "openrouter/owl-alpha",
 };
 
 // ── Token budgets per task ────────────────────────────────────────────
 const TASK_MAX_TOKENS: Partial<Record<AITask, number>> = {
-  clarification_check: 1500,
-  followup_questions: 800,
-  financial_projection: 3000,
-  call_brief_summary: 600,
-  technical_analysis: 2000,
-  climate_analysis: 800,
-  market_research: 1000,
-  personalize_questionnaire: 800,
-  report_executive_summary: 16000,
-  report_market_analysis: 16000,
-  report_business_model: 16000,
-  report_financial_projection: 16000,
-  report_risk_mitigation: 16000,
-  report_conclusion: 16000,
+  clarification_check: 3500,
+  followup_questions: 2800,
+  financial_projection: 7000,
+  call_brief_summary: 3600,
+  technical_analysis: 5000,
+  climate_analysis: 4000,
+  market_research: 3000,
+  personalize_questionnaire: 3500,
+  ...SECTION_TASK_TOKENS,
 };
 
 // ── Keys relevant per task — used by serialiseAnswersForPrompt ────────
@@ -256,8 +263,13 @@ async function _callAI(request: AIRequest): Promise<AIResponse> {
         /timeout|upstream|bad gateway|unavailable/i.test(errMsg);
 
       if (isTransient) {
-        lastError = new Error(`AI model error (transient): ${JSON.stringify(data.error)}`);
-        console.warn(`[AI] Transient model error on attempt ${attempt + 1}:`, errMsg);
+        lastError = new Error(
+          `AI model error (transient): ${JSON.stringify(data.error)}`,
+        );
+        console.warn(
+          `[AI] Transient model error on attempt ${attempt + 1}:`,
+          errMsg,
+        );
         continue;
       }
 
