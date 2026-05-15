@@ -55,7 +55,7 @@ const TASK_MODEL_OVERRIDES: Partial<Record<AITask, string>> = {
   report_business_model: "openai/gpt-oss-120b:free",
   report_financial_projection: "openrouter/owl-alpha",
   report_risk_mitigation: "nvidia/nemotron-3-super-120b-a12b:free",
-  report_conclusion: "openrouter/owl-alpha",
+  report_conclusion: "openai/gpt-oss-120b:free",
 };
 
 // ── Token budgets per task ────────────────────────────────────────────
