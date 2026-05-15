@@ -7,9 +7,6 @@
  * (same format as before). This module handles the conversion in both
  * directions so existing stored content is never broken.
  *
- * Dependencies (add to package.json):
- *   npm install marked turndown
- *   npm install --save-dev @types/turndown
  */
 
 import { marked, Renderer } from "marked";
