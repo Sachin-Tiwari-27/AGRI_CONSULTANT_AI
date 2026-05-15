@@ -468,9 +468,11 @@ async function runFullPipeline({
     : REPORT_SECTIONS.map((s) => s.key);
 
   // Exclude executive_summary from phased generation — it runs in Phase 6
+  // Cast back to ReportSectionKey[] — TypeScript narrows filter(k !== X) to
+  // Exclude<ReportSectionKey, "executive_summary">[] which breaks includes(sc.key).
   const phasedSections = targetSections.filter(
     (k) => k !== "executive_summary",
-  );
+  ) as ReportSectionKey[];
   const phaseMap = getSectionsByPhase();
 
   send({
@@ -485,8 +487,19 @@ async function runFullPipeline({
   const generatedKeys: string[] = [];
 
   // ── Technical analysis (needed by multiple sections) ───────────────
-  let technicalAnalysis =
-    existingReport?.sections?.technical_analysis?.content || "";
+  // Only reuse existing analysis for a narrowly-targeted incremental regen
+  // that does NOT include technical_analysis in its explicit target list.
+  // On full regen (sectionsToGenerate = null) OR when technical_analysis is
+  // explicitly targeted, always recompute so updated questionnaire data is
+  // reflected in all downstream sections.
+  const skipTechnicalRegen =
+    isIncremental &&
+    Array.isArray(sectionsToGenerate) &&
+    !(sectionsToGenerate as string[]).includes("technical_analysis");
+
+  let technicalAnalysis = skipTechnicalRegen
+    ? existingReport?.sections?.technical_analysis?.content || ""
+    : "";
   if (!technicalAnalysis) {
     send({
       type: "generating",

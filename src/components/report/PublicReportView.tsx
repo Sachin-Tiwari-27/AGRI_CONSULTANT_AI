@@ -7,30 +7,40 @@ import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer'
 import type { Report, ReportSectionKey } from '@/types'
 import type { LucideIcon } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { REPORT_SECTIONS } from '@/lib/report-section-config'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 
+// Canonical section icon map — fallback to Info for any future additions.
 const SECTION_ICONS: Record<string, LucideIcon> = {
-  executive_summary: CheckCircle,
-  market_analysis: BarChart3,
-  business_model: TrendingUp,
+  executive_summary:    CheckCircle,
+  introduction:         FileText,
+  project_overview:     FileText,
+  market_analysis:      BarChart3,
+  target_market:        BarChart3,
+  competitive_analysis: TrendingUp,
+  business_model:       TrendingUp,
+  revenue_streams:      TrendingUp,
+  marketing_sales_plan: TrendingUp,
+  proposed_machinery:   ShieldCheck,
+  proposed_timelines:   FileText,
+  quality_assurance:    ShieldCheck,
   financial_projection: TrendingUp,
-  risk_mitigation: ShieldCheck,
-  technical_analysis: ShieldCheck,
-  conclusion: FileText,
+  risk_mitigation:      ShieldCheck,
+  benefits_impact:      CheckCircle,
+  csr:                  FileText,
+  conclusion:           FileText,
 }
 
-const SECTION_TITLES: Record<string, string> = {
-  executive_summary: 'Executive Summary',
-  market_analysis: 'Market Analysis',
-  business_model: 'Business Model',
-  financial_projection: 'Financial Projection',
-  risk_mitigation: 'Risk & Mitigation',
-  technical_analysis: 'Technical Analysis',
-  conclusion: 'Conclusion',
-}
+// Derived from the single source of truth — preserves numbered display order.
+const SECTION_TITLES: Record<string, string> = Object.fromEntries(
+  REPORT_SECTIONS.map((s) => [s.key, s.title])
+)
+
+// Ordered list of all main section keys per config (excludes context/appendix).
+const REPORT_SECTION_KEYS = REPORT_SECTIONS.map((s) => s.key)
 
 const FREE_SECTIONS = ['executive_summary']
 const CHART_COLORS = ['#1A5C38', '#2E7D52', '#4CAF82', '#7DD3B0', '#A8E6CA']
@@ -47,7 +57,8 @@ export function PublicReportView({
   const [paid, setPaid] = useState(initialPaid)
   const [paying, setPaying] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const sectionKeys = Object.keys(SECTION_TITLES).filter(k => report.sections[k as ReportSectionKey])
+  // Only show sections that were generated, in canonical config order.
+  const sectionKeys = REPORT_SECTION_KEYS.filter(k => report.sections[k as ReportSectionKey])
 
   const cropChartData = report.financial_model?.crops?.map(c => ({
     name: c.name, revenue: c.annual_revenue,
