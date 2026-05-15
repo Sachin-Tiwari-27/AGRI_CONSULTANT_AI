@@ -34,6 +34,8 @@ export function MarkdownRenderer({ content, className }: Props) {
         "[&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-slate-700 [&_th]:whitespace-nowrap",
         "[&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5 [&_td]:text-slate-700",
         "[&_hr]:border-slate-200 [&_hr]:my-3",
+        "[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3 [&_img]:border [&_img]:border-slate-100 [&_img]:shadow-sm",
+        "[&_a]:text-green-600 [&_a]:hover:underline [&_a]:font-medium",
         "[&_p]:mb-2",
         className,
       )}
@@ -124,6 +126,10 @@ function parseMarkdown(md: string): string {
 
   // Inline formatting
   html = html
+    // Images (must be before links)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")

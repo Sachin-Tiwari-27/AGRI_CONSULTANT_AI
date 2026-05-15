@@ -1,20 +1,14 @@
 "use client";
-/**
- * src/components/report/RichEditor.tsx
- *
- * Google-Docs-style rich text editor for report sections.
- * Built on Tiptap (ProseMirror wrapper, MIT license).
- */
-
-import { useEditor, EditorContent, Node, mergeAttributes } from "@tiptap/react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import { Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Table from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableHeader from "@tiptap/extension-table-header";
-import TableCell from "@tiptap/extension-table-cell";
-import Image from "@tiptap/extension-image";
-import Placeholder from "@tiptap/extension-placeholder";
-import CharacterCount from "@tiptap/extension-character-count";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { Image } from "@tiptap/extension-image";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { CharacterCount } from "@tiptap/extension-character-count";
 import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown-convert";
 import {
   Bold,
@@ -41,15 +35,23 @@ import { createClient } from "@/lib/supabase/client";
 // ── Custom Placeholder Node ────────────────────────────────────────────
 // Renders ⬡ PLACEHOLDER blocks that the consultant fills in manually.
 const PlaceholderNode = Node.create({
-  name: "placeholder",
+  name: "reportPlaceholder",
   group: "block",
   atom: true,
   draggable: true,
 
   addAttributes() {
     return {
-      label: { default: "Content" },
-      hint: { default: "" },
+      label: {
+        default: "Content",
+        parseHTML: (element) => element.getAttribute("data-label"),
+        renderHTML: (attributes) => ({ "data-label": attributes.label }),
+      },
+      hint: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-hint"),
+        renderHTML: (attributes) => ({ "data-hint": attributes.hint }),
+      },
     };
   },
 
@@ -64,7 +66,7 @@ const PlaceholderNode = Node.create({
         "data-type": "placeholder",
         class: "placeholder-block",
       }),
-      `⬡ PLACEHOLDER: ${HTMLAttributes.label}`,
+      `⬡ PLACEHOLDER: ${HTMLAttributes["data-label"] || "Content"}`,
     ];
   },
 
@@ -191,6 +193,7 @@ export function RichEditor({
 
   const editor = useEditor(
     {
+      immediatelyRender: false,
       editable: !readOnly,
       extensions: [
         StarterKit.configure({
@@ -200,7 +203,7 @@ export function RichEditor({
         TableRow,
         TableHeader,
         TableCell,
-        Image.configure({ allowBase64: false, inline: false }),
+        Image.configure({ allowBase64: false, inline: true }),
         Placeholder.configure({ placeholder }),
         CharacterCount,
         PlaceholderNode,
@@ -240,7 +243,7 @@ export function RichEditor({
     const html = markdownToHtml(content);
     // Only update if editor doesn't already have this content
     if (editor.getHTML() !== html) {
-      editor.commands.setContent(html, false);
+      editor.commands.setContent(html, { emitUpdate: false });
     }
   }, [content, editor]);
 
@@ -250,7 +253,7 @@ export function RichEditor({
         ?.chain()
         .focus()
         .insertContent({
-          type: "placeholder",
+          type: "reportPlaceholder",
           attrs: { label, hint },
         })
         .run();
