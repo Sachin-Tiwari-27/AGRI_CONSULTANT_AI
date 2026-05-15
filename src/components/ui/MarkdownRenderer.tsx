@@ -1,5 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
+import { marked, Renderer } from "marked";
 
 interface Props {
   content: string;
@@ -34,6 +35,8 @@ export function MarkdownRenderer({ content, className }: Props) {
         "[&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-slate-700 [&_th]:whitespace-nowrap",
         "[&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5 [&_td]:text-slate-700",
         "[&_hr]:border-slate-200 [&_hr]:my-3",
+        "[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3 [&_img]:border [&_img]:border-slate-100 [&_img]:shadow-sm",
+        "[&_a]:text-green-600 [&_a]:hover:underline [&_a]:font-medium",
         "[&_p]:mb-2",
         className,
       )}
@@ -45,103 +48,31 @@ export function MarkdownRenderer({ content, className }: Props) {
 function parseMarkdown(md: string): string {
   if (!md) return "";
 
-  let html = md
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const renderer = new Renderer();
 
-  // Code blocks (must come before inline code)
-  html = html.replace(
-    /```[\w]*\n?([\s\S]*?)```/g,
-    (_, code) => `<pre><code>${code.trim()}</code></pre>`,
-  );
+  // Wrap tables in an overflow div so wide tables scroll horizontally
+  renderer.table = (header: string, body: string) => {
+    return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+  };
 
-  // ── PR-4 fix: wrap tables in overflow-x-auto div ─────────────────
-  // Each markdown table block is wrapped in <div class="table-wrapper">
-  // so wide tables scroll horizontally within their card, not the page.
-  html = html.replace(
-    /^(\|.+\|\n)((?:\|[-:]+)+\|\n)((?:\|.+\|\n?)*)/gm,
-    (match) => {
-      const rows = match
-        .trim()
-        .split("\n")
-        .filter((r) => r.trim());
-      if (rows.length < 2) return match;
-
-      const headerCells = rows[0]
-        .split("|")
-        .filter((c) => c.trim())
-        .map((c) => `<th>${c.trim()}</th>`)
-        .join("");
-
-      const bodyRows = rows
-        .slice(2)
-        .map((row) => {
-          const cells = row
-            .split("|")
-            .filter((c) => c.trim())
-            .map((c) => `<td>${c.trim()}</td>`)
-            .join("");
-          return `<tr>${cells}</tr>`;
-        })
-        .join("");
-
-      return `<div class="table-wrapper"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
-    },
-  );
-
-  // Headers
-  html = html
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>");
-
-  // Horizontal rule
-  html = html.replace(/^---+$/gm, "<hr/>");
-
-  // Blockquote
-  html = html.replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>");
-
-  // Unordered lists
-  html = html.replace(/^([ \t]*[-*] .+\n?)+/gm, (block) => {
-    const items = block
-      .trim()
-      .split("\n")
-      .map((line) => `<li>${line.replace(/^[ \t]*[-*] /, "")}</li>`)
-      .join("");
-    return `<ul>${items}</ul>`;
+  marked.setOptions({
+    renderer,
+    gfm: true,
+    breaks: false,
   });
 
-  // Ordered lists
-  html = html.replace(/^([ \t]*\d+\. .+\n?)+/gm, (block) => {
-    const items = block
-      .trim()
-      .split("\n")
-      .map((line) => `<li>${line.replace(/^[ \t]*\d+\. /, "")}</li>`)
-      .join("");
-    return `<ol>${items}</ol>`;
-  });
+  try {
+    let html = marked.parse(md) as string;
 
-  // Inline formatting
-  html = html
-    .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/__(.+?)__/g, "<strong>$1</strong>")
-    .replace(/_(.+?)_/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
+    // Restore custom placeholder nodes for preview
+    html = html.replace(
+      /⬡ PLACEHOLDER: (.*?)(?=<|\n|$)/g,
+      '<div class="my-4 px-4 py-3 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 text-amber-800 text-sm font-medium flex items-center gap-2"><span class="text-amber-500 text-base">⬡</span><span>PLACEHOLDER: $1</span></div>'
+    );
 
-  // Paragraphs
-  html = html
-    .split(/\n{2,}/)
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) return "";
-      if (/^<(h[1-6]|ul|ol|li|table|div|pre|blockquote|hr)/.test(trimmed))
-        return trimmed;
-      return `<p>${trimmed.replace(/\n/g, "<br/>")}</p>`;
-    })
-    .join("\n");
-
-  return html;
+    return html;
+  } catch (err) {
+    console.error("Markdown parse error:", err);
+    return md;
+  }
 }

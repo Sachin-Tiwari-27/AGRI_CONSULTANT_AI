@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase CLI (only ignore binary, not config)
+supabase/bin
+
+# Documentation
+breakdown_pr.md

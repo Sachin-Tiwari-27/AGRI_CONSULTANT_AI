@@ -1,9 +1,9 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/FormFields";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { RichEditor } from "@/components/report/RichEditor";
 import { PaymentGateModal } from "@/components/report/PaymentGateModal";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -22,6 +22,8 @@ import {
   CreditCard,
   CheckCircle2,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { Report, ReportSectionKey, Project } from "@/types";
@@ -36,7 +38,6 @@ const SECTION_TITLES: Record<string, string> = {
   conclusion: "Conclusion",
 };
 
-// Ordered list of user-facing sections (excludes internal context sections)
 const ORDERED_SECTION_KEYS: ReportSectionKey[] = [
   "executive_summary",
   "market_analysis",
@@ -52,7 +53,6 @@ interface Props {
   projectId: string;
   onUpdate: (report: Report) => void;
   onProjectUpdate: (patch: Partial<Project>) => void;
-  // Optional: set of section keys currently being streamed in
   streamingSection?: string | null;
 }
 
@@ -64,13 +64,10 @@ export function ReportEditor({
   onProjectUpdate,
   streamingSection = null,
 }: Props) {
-  // ── FIX: expandedSection starts null, not "executive_summary" ────────
-  // Previously defaulting to "executive_summary" caused the first click
-  // to collapse it (the state said "already open"). Now we default to null
-  // and auto-expand the first available section when a report loads.
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState("");
+  // editContent is now tracked in a ref to avoid re-renders on every keystroke in RichEditor
+  const editContentRef = useRef<string>("");
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -78,18 +75,15 @@ export function ReportEditor({
   const [markingPaid, setMarkingPaid] = useState(false);
   const [markPaidNote, setMarkPaidNote] = useState("");
   const [showMarkPaid, setShowMarkPaid] = useState(false);
+  const [previewMode, setPreviewMode] = useState<Record<string, boolean>>({});
 
-  // Track previous report ID so we auto-expand on new report loads
   const prevReportIdRef = useRef<string | null>(null);
 
-  // ── FIX: auto-expand first section when report.id changes ────────────
-  // This handles the case where generateReport() sets a new report object.
-  // We use report.id (or project_id as fallback) as the change signal.
+  // Auto-expand first section when report loads
   useEffect(() => {
     const reportKey = report.id || report.project_id;
     if (reportKey !== prevReportIdRef.current) {
       prevReportIdRef.current = reportKey;
-      // Find the first section that actually has content
       const firstKey = ORDERED_SECTION_KEYS.find(
         (k) => report.sections[k]?.content,
       );
@@ -97,7 +91,6 @@ export function ReportEditor({
     }
   }, [report.id, report.project_id, report.sections]);
 
-  // ── FIX: unambiguous toggle — no more "already open" confusion ────────
   const toggleSection = useCallback((key: string) => {
     setExpandedSection((prev) => (prev === key ? null : key));
   }, []);
@@ -115,15 +108,15 @@ export function ReportEditor({
   const paymentCollected = (project as any).payment_collected;
   const isCompleted = project.status === "completed";
   const isPublished = report.status === "published";
-  const fm = report?.financial_model;
 
+  // ── Save section ─────────────────────────────────────────────────────
   async function saveSection(key: string) {
     setSaving(true);
     const updated = {
       ...report.sections,
       [key]: {
         ...report.sections[key as ReportSectionKey],
-        content: editContent,
+        content: editContentRef.current,
         ai_generated: false,
         last_edited_at: new Date().toISOString(),
       },
@@ -134,6 +127,7 @@ export function ReportEditor({
       .eq("project_id", projectId);
     onUpdate({ ...report, sections: updated as typeof report.sections });
     setEditingSection(null);
+    setExpandedSection(key); // keep section open after save
     setSaving(false);
   }
 
@@ -164,7 +158,6 @@ export function ReportEditor({
         .single();
       if (data) {
         onUpdate(data as Report);
-        // Auto-expand the regenerated section
         setExpandedSection(key);
       }
     } finally {
@@ -172,7 +165,7 @@ export function ReportEditor({
     }
   }
 
-  // ── Publish flow ──────────────────────────────────────────────────────
+  // ── Publish helpers ───────────────────────────────────────────────────
   function handlePublishClick() {
     if (isPublished && reportPrice !== null && reportPrice !== undefined) {
       publishReport(null);
@@ -197,7 +190,7 @@ export function ReportEditor({
     await publishReport(price);
   }
 
-  async function publishReport(price: number | null) {
+  async function publishReport(_price: number | null) {
     setSaving(true);
     try {
       const res = await fetch("/api/report/publish", {
@@ -214,7 +207,7 @@ export function ReportEditor({
       } as any);
       if (data.warnings?.length > 0) alert(data.warnings.join("\n"));
     } catch {
-      alert("Failed to publish report. Please check your connection.");
+      alert("Failed to publish report.");
     } finally {
       setSaving(false);
     }
@@ -242,12 +235,11 @@ export function ReportEditor({
   async function resendNotification() {
     setSaving(true);
     try {
-      const res = await fetch("/api/report/notify", {
+      await fetch("/api/report/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
       });
-      if (!res.ok) throw new Error("Failed to send");
       alert("Notification email resent to client.");
     } catch {
       alert("Failed to resend email.");
@@ -270,11 +262,9 @@ export function ReportEditor({
     }
   }
 
-  // Progress: count sections with content vs total expected
   const completedCount = sectionKeys.filter(
     (k) => !!report.sections[k as ReportSectionKey]?.content,
   ).length;
-  const totalExpected = ORDERED_SECTION_KEYS.length;
 
   return (
     <>
@@ -291,7 +281,7 @@ export function ReportEditor({
       )}
 
       <div className="space-y-3">
-        {/* ── Streaming progress bar ───────────────────────────────── */}
+        {/* Streaming progress */}
         {streamingSection && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3">
             <div className="flex items-center justify-between mb-2">
@@ -305,21 +295,21 @@ export function ReportEditor({
                 </p>
               </div>
               <span className="text-xs text-emerald-600 font-medium">
-                {completedCount} / {totalExpected} sections
+                {completedCount} / {ORDERED_SECTION_KEYS.length} sections
               </span>
             </div>
             <div className="h-1.5 bg-emerald-200 rounded-full overflow-hidden">
               <div
                 className="h-full bg-emerald-500 rounded-full transition-all duration-500"
                 style={{
-                  width: `${Math.round((completedCount / totalExpected) * 100)}%`,
+                  width: `${Math.round((completedCount / ORDERED_SECTION_KEYS.length) * 100)}%`,
                 }}
               />
             </div>
           </div>
         )}
 
-        {/* ── Publish / status bar ─────────────────────────────────── */}
+        {/* Publish bar */}
         <Card>
           <CardBody className="py-3">
             <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -332,15 +322,15 @@ export function ReportEditor({
                   </p>
                   {reportPrice !== null && reportPrice !== undefined && (
                     <span
-                      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${
                         reportPrice === 0
-                          ? "bg-blue-50 text-blue-700 border border-blue-200"
-                          : "bg-green-50 text-green-700 border border-green-200"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-green-50 text-green-700 border-green-200"
                       }`}
                     >
                       {reportPrice === 0 ? (
                         <>
-                          <Unlock className="w-3 h-3" /> Free access
+                          <Unlock className="w-3 h-3" /> Free
                         </>
                       ) : (
                         <>
@@ -365,7 +355,6 @@ export function ReportEditor({
                   of {sectionKeys.length} sections approved
                 </p>
               </div>
-
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                 {isPublished ? (
                   <>
@@ -387,7 +376,7 @@ export function ReportEditor({
                       onClick={resendNotification}
                       loading={saving}
                     >
-                      <Send className="w-3.5 h-3.5" /> Resend email
+                      <Send className="w-3.5 h-3.5" /> Resend
                     </Button>
                     <Button
                       variant="outline"
@@ -419,7 +408,6 @@ export function ReportEditor({
               </div>
             </div>
 
-            {/* Mark paid inline form */}
             {showMarkPaid && (
               <div className="mt-4 pt-4 border-t border-slate-100 flex items-end gap-3 flex-wrap">
                 <div className="flex-1 min-w-[200px]">
@@ -430,7 +418,7 @@ export function ReportEditor({
                     type="text"
                     value={markPaidNote}
                     onChange={(e) => setMarkPaidNote(e.target.value)}
-                    placeholder="e.g. Bank transfer received · Ref TXN-2025-001"
+                    placeholder="e.g. Bank transfer received"
                     className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
@@ -440,7 +428,7 @@ export function ReportEditor({
                   loading={markingPaid}
                   className="flex-shrink-0"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Confirm payment
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Confirm
                 </Button>
                 <Button
                   size="sm"
@@ -456,20 +444,20 @@ export function ReportEditor({
             {!allApproved && !isPublished && (
               <div className="mt-3 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                Approve all sections before publishing. Click each section and
-                hit "Approve".
+                Approve all sections before publishing.
               </div>
             )}
           </CardBody>
         </Card>
 
-        {/* ── Section cards ─────────────────────────────────────────── */}
+        {/* Section cards */}
         {ORDERED_SECTION_KEYS.map((key) => {
           const section = report.sections[key as ReportSectionKey];
           const isStreaming = streamingSection === key;
           const isExpanded = expandedSection === key;
           const isEditing = editingSection === key;
           const hasContent = !!section?.content;
+          const isPreviewing = previewMode[key] ?? false;
 
           return (
             <Card
@@ -525,24 +513,63 @@ export function ReportEditor({
                 <CardBody>
                   {isEditing ? (
                     <div className="space-y-3">
-                      <Textarea
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        className="min-h-[300px] font-mono text-xs"
-                      />
-                      <div className="flex gap-2">
+                      {/* Toggle between rich edit and markdown preview */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-medium text-slate-600">
+                          Editing:
+                        </span>
+                        <button
+                          onClick={() =>
+                            setPreviewMode((p) => ({
+                              ...p,
+                              [key]: !isPreviewing,
+                            }))
+                          }
+                          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 transition-colors"
+                        >
+                          {isPreviewing ? (
+                            <>
+                              <Edit3 className="w-3 h-3" /> Edit
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-3 h-3" /> Preview
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {isPreviewing ? (
+                        // Preview mode — rendered markdown
+                        <div className="border border-slate-200 rounded-xl px-6 py-5 min-h-[300px] bg-white">
+                          <MarkdownRenderer content={editContentRef.current} />
+                        </div>
+                      ) : (
+                        // Rich editor mode — Tiptap
+                        <RichEditor
+                          content={editContentRef.current}
+                          onChange={(md) => {
+                            editContentRef.current = md;
+                          }}
+                          projectId={projectId}
+                          placeholder={`Edit ${SECTION_TITLES[key] ?? key}…`}
+                        />
+                      )}
+
+                      <div className="flex gap-2 pt-1">
                         <Button
                           size="sm"
                           onClick={() => saveSection(key)}
                           loading={saving}
                         >
-                          Save
+                          Save changes
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => {
                             setEditingSection(null);
+                            setPreviewMode((p) => ({ ...p, [key]: false }));
                             setExpandedSection(key);
                           }}
                         >
@@ -558,8 +585,8 @@ export function ReportEditor({
                           size="sm"
                           variant="secondary"
                           onClick={() => {
+                            editContentRef.current = section!.content;
                             setEditingSection(key);
-                            setEditContent(section!.content);
                           }}
                         >
                           <Edit3 className="w-3 h-3" /> Edit
@@ -588,7 +615,7 @@ export function ReportEditor({
                 </CardBody>
               )}
 
-              {/* Streaming skeleton — shows while section is being generated */}
+              {/* Streaming skeleton */}
               {isStreaming && !hasContent && (
                 <CardBody>
                   <div className="space-y-2 animate-pulse">
