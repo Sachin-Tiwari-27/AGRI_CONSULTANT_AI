@@ -1,28 +1,238 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
+/* ── Google Fonts ─────────────────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
 
+/* ── shadcn/ui CSS variables (light mode) ─────────────────────────── */
 @layer base {
-  * { box-sizing: border-box; }
-  html { -webkit-font-smoothing: antialiased; }
-  body { @apply text-slate-900 bg-slate-50; }
-  a { @apply text-inherit; }
+  :root {
+    /* Core */
+    --background: 0 0% 98.5%;
+    --foreground: 222 20% 8%;
+
+    /* Card */
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 8%;
+
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 8%;
+
+    /* Brand (green) */
+    --primary: 152 62% 22%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 210 16% 96%;
+    --secondary-foreground: 222 20% 20%;
+
+    /* Muted */
+    --muted: 210 16% 96%;
+    --muted-foreground: 215 14% 48%;
+
+    /* Accent */
+    --accent: 152 40% 95%;
+    --accent-foreground: 152 62% 20%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Border / Input / Ring */
+    --border: 214 18% 91%;
+    --input: 214 18% 91%;
+    --ring: 152 62% 22%;
+
+    /* Radius */
+    --radius: 0.625rem;
+
+    /* Chart colours */
+    --chart-1: 152 62% 22%;
+    --chart-2: 152 50% 38%;
+    --chart-3: 152 40% 55%;
+    --chart-4: 195 60% 42%;
+    --chart-5: 28 80% 52%;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 20% 20%;
+    --sidebar-primary: 152 62% 22%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 152 40% 95%;
+    --sidebar-accent-foreground: 152 62% 20%;
+    --sidebar-border: 214 18% 91%;
+    --sidebar-ring: 152 62% 22%;
+  }
 }
 
+/* ── Tailwind v4 theme ────────────────────────────────────────────── */
+@theme {
+  /* Typography */
+  --font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* Brand palette */
+  --color-brand-950: #052413;
+  --color-brand-900: #0b3b21;
+  --color-brand-800: #1a5c38;
+  --color-brand-700: #2e7d52;
+  --color-brand-600: #3d9966;
+  --color-brand-500: #4cb57a;
+  --color-brand-400: #6fcf97;
+  --color-brand-300: #9de0b8;
+  --color-brand-200: #c4f0d8;
+  --color-brand-100: #e0f8ec;
+  --color-brand-50: #f0fdf6;
+
+  /* Surface */
+  --color-surface: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-subtle: #f1f5f9;
+}
+
+/* ── Base resets ──────────────────────────────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    @apply bg-surface text-foreground font-sans;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  /* Remove outline on non-keyboard focus */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-1;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
+  }
+}
+
+/* ── Markdown / Report prose ──────────────────────────────────────── */
 @layer utilities {
-  .prose-report p { @apply mb-3 leading-relaxed; }
-  .prose-report h3 { @apply font-semibold text-slate-900 mb-2 mt-5; }
-  /* Markdown table styles */
-  .markdown-body table { @apply w-full border-collapse text-sm mb-4; }
-  .markdown-body th { @apply text-left px-3 py-2 bg-slate-50 border border-slate-200 font-semibold text-slate-700; }
-  .markdown-body td { @apply px-3 py-2 border border-slate-200 text-slate-700; }
-  .markdown-body tr:nth-child(even) td { @apply bg-slate-50/50; }
-  .markdown-body ul { @apply list-disc pl-5 space-y-1 mb-3; }
-  .markdown-body ol { @apply list-decimal pl-5 space-y-1 mb-3; }
-  .markdown-body strong { @apply font-semibold text-slate-900; }
-  .markdown-body h2 { @apply text-xl font-bold text-slate-900 mt-6 mb-3; }
-  .markdown-body h3 { @apply text-base font-semibold text-slate-800 mt-4 mb-2; }
-  .markdown-body blockquote { @apply border-l-4 border-green-300 pl-4 text-slate-600 italic; }
+  .prose-report p {
+    @apply mb-3 leading-relaxed;
+  }
+  .prose-report h3 {
+    @apply font-semibold text-foreground mb-2 mt-5;
+  }
+
+  /* Markdown rendered content */
+  .markdown-body table {
+    @apply w-full border-collapse text-sm mb-4;
+  }
+  .markdown-body th {
+    @apply text-left px-3 py-2 bg-muted border border-border font-semibold text-foreground;
+  }
+  .markdown-body td {
+    @apply px-3 py-2 border border-border text-muted-foreground;
+  }
+  .markdown-body tr:nth-child(even) td {
+    @apply bg-muted/40;
+  }
+  .markdown-body ul {
+    @apply list-disc pl-5 space-y-1 mb-3;
+  }
+  .markdown-body ol {
+    @apply list-decimal pl-5 space-y-1 mb-3;
+  }
+  .markdown-body strong {
+    @apply font-semibold text-foreground;
+  }
+  .markdown-body h2 {
+    @apply text-lg font-bold text-foreground mt-6 mb-3;
+  }
+  .markdown-body h3 {
+    @apply text-base font-semibold text-foreground mt-4 mb-2;
+  }
+  .markdown-body blockquote {
+    @apply border-l-4 border-brand-300 pl-4 text-muted-foreground italic;
+  }
+
+  /* Surface utilities */
+  .bg-surface {
+    background-color: var(--color-surface);
+  }
+  .bg-surface-raised {
+    background-color: var(--color-surface-raised);
+  }
+
+  /* Sidebar collapsed/expanded transition */
+  .sidebar-item-label {
+    @apply overflow-hidden whitespace-nowrap transition-all duration-200;
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 99px;
+  }
+}
+
+/* ── Keyframe animations ──────────────────────────────────────────── */
+@keyframes toast-shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Tiptap editor overrides ──────────────────────────────────────── */
+.tiptap-editor .ProseMirror {
+  @apply outline-none;
+}
+.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply text-muted-foreground pointer-events-none float-left h-0;
 }
