@@ -653,7 +653,6 @@ export function ProjectWorkspace({
             currency={currency}
             onGenerateReport={() => generateReport()}
             loadingReport={loading === "report"}
-            onNavigateToFinancial={() => setActiveTab("financial")}
           />
         )}
         {activeTab === "financial" && (
