@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/FormFields";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import {
   Save,
   CreditCard,
@@ -93,7 +93,7 @@ export function PaymentSettingsForm({ profile }: Props) {
           </p>
         </div>
       </CardHeader>
-      <CardBody className="space-y-5">
+      <CardContent className="space-y-5">
         {/* Stripe status */}
         <div
           className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
@@ -252,7 +252,7 @@ export function PaymentSettingsForm({ profile }: Props) {
             <Save className="w-4 h-4" /> Save settings
           </Button>
         </div>
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }

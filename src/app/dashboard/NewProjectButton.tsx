@@ -1,11 +1,11 @@
-'use client'
-import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { CreateProjectModal } from '@/components/project/CreateProjectModal'
-import { Plus } from 'lucide-react'
+"use client";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { CreateProjectModal } from "@/components/project/CreateProjectModal";
+import { Plus } from "lucide-react";
 
 export function NewProjectButton() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>
@@ -13,5 +13,5 @@ export function NewProjectButton() {
       </Button>
       {open && <CreateProjectModal onClose={() => setOpen(false)} />}
     </>
-  )
+  );
 }

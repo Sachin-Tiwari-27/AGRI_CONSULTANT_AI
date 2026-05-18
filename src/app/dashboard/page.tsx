@@ -1,48 +1,61 @@
-import { createClient, getUser } from '@/lib/supabase/server'
-import { TopBar } from '@/components/layout/Sidebar'
-import { StatCard } from '@/components/ui/Card'
-import { ProjectCard } from '@/components/project/ProjectCard'
-import { NewProjectButton } from './NewProjectButton'
-import type { Project } from '@/types'
+import { createClient, getUser } from "@/lib/supabase/server";
+import { TopBar } from "@/components/layout/Sidebar";
+import { StatCard } from "@/components/ui/status";
+import { ProjectCard } from "@/components/project/ProjectCard";
+import { NewProjectButton } from "./NewProjectButton";
+import type { Project } from "@/types";
 
 export default async function DashboardPage() {
-  const [{ data: { user } }, supabase] = await Promise.all([
-    getUser(),
-    createClient()
-  ])
+  const [
+    {
+      data: { user },
+    },
+    supabase,
+  ] = await Promise.all([getUser(), createClient()]);
 
   const [profileRes, projectsRes] = await Promise.all([
-    supabase.from('profiles').select('full_name, company_name').eq('id', user!.id).single(),
-    supabase.from('projects')
-      .select('*')
-      .eq('consultant_id', user!.id)
-      .order('updated_at', { ascending: false })
-      .limit(20)
-  ])
+    supabase
+      .from("profiles")
+      .select("full_name, company_name")
+      .eq("id", user!.id)
+      .single(),
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("consultant_id", user!.id)
+      .order("updated_at", { ascending: false })
+      .limit(20),
+  ]);
 
-  const profile = profileRes.data
-  const projects = projectsRes.data
+  const profile = profileRes.data;
+  const projects = projectsRes.data;
 
-  const all = (projects || []) as Project[]
-  const active = all.filter(p => !['completed'].includes(p.status))
-  const completed = all.filter(p => p.status === 'completed')
-  const awaitingReview = all.filter(p =>
-    ['questionnaire_submitted', 'clarification_sent'].includes(p.status)
-  )
+  const all = (projects || []) as Project[];
+  const active = all.filter((p) => !["completed"].includes(p.status));
+  const completed = all.filter((p) => p.status === "completed");
+  const awaitingReview = all.filter((p) =>
+    ["questionnaire_submitted", "clarification_sent"].includes(p.status),
+  );
 
   return (
     <div>
-      <TopBar title={`Good morning, ${profile?.full_name?.split(' ')[0] || 'Consultant'}`}>
+      <TopBar
+        title={`Good morning, ${profile?.full_name?.split(" ")[0] || "Consultant"}`}
+      >
         <NewProjectButton />
       </TopBar>
 
       <div className="px-8 py-6 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
-          <StatCard label="Active projects"   value={active.length} />
-          <StatCard label="Awaiting response" value={awaitingReview.length} sub="questionnaires pending" />
-          <StatCard label="Completed"         value={completed.length} />
-          <StatCard label="Total projects"    value={all.length} />
+          <StatCard label="Active projects" value={active.length} />
+          <StatCard
+            label="Awaiting response"
+            value={awaitingReview.length}
+            sub="questionnaires pending"
+          />
+          <StatCard label="Completed" value={completed.length} />
+          <StatCard label="Total projects" value={all.length} />
         </div>
 
         {/* Needs attention */}
@@ -52,7 +65,9 @@ export default async function DashboardPage() {
               Needs attention
             </h2>
             <div className="grid grid-cols-1 gap-3">
-              {awaitingReview.map(p => <ProjectCard key={p.id} project={p} />)}
+              {awaitingReview.map((p) => (
+                <ProjectCard key={p.id} project={p} />
+              ))}
             </div>
           </section>
         )}
@@ -65,15 +80,19 @@ export default async function DashboardPage() {
           {active.length === 0 ? (
             <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
               <p className="text-slate-500 text-sm">No active projects yet.</p>
-              <p className="text-slate-400 text-xs mt-1">Create your first project to get started.</p>
+              <p className="text-slate-400 text-xs mt-1">
+                Create your first project to get started.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {active.map(p => <ProjectCard key={p.id} project={p} />)}
+              {active.map((p) => (
+                <ProjectCard key={p.id} project={p} />
+              ))}
             </div>
           )}
         </section>
       </div>
     </div>
-  )
+  );
 }

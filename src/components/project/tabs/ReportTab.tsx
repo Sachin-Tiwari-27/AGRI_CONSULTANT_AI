@@ -1,9 +1,9 @@
 "use client";
 import { useState, useRef } from "react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ReportEditor } from "@/components/report/ReportEditor";
-import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import {
   Zap,
   FileText,
@@ -642,9 +642,9 @@ function ReportPreview({
                 )}
               </div>
             </CardHeader>
-            <CardBody>
+            <CardContent>
               <MarkdownRenderer content={section.content} />
-            </CardBody>
+            </CardContent>
           </Card>
         );
       })}

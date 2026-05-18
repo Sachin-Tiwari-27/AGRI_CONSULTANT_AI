@@ -1,15 +1,9 @@
 "use client";
 import { useState, useRef } from "react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/FormFields";
-import { Button } from "@/components/ui/Button";
-import {
-  Save,
-  User,
-  Camera,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Save, User, Camera, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface ProfileSettings {
   full_name?: string | null;
@@ -98,7 +92,7 @@ export function ProfileSettingsForm({ profile }: Props) {
           Your consultant identity shown to clients and in reports.
         </p>
       </CardHeader>
-      <CardBody className="space-y-5">
+      <CardContent className="space-y-5">
         {/* Avatar upload */}
         <div className="flex items-center gap-5">
           <div className="relative flex-shrink-0">
@@ -228,7 +222,7 @@ export function ProfileSettingsForm({ profile }: Props) {
             <Save className="w-4 h-4" /> Save profile
           </Button>
         </div>
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }

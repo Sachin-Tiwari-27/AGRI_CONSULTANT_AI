@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { ToastProvider, toast } from "@/components/ui/Toast";
+import { toast } from "@/components/ui/toast";
 import { OverviewTab } from "@/components/project/tabs/OverviewTab";
 import { QuestionnaireTab } from "@/components/project/tabs/QuestionnaireTab";
 import { AnalysisTab } from "@/components/project/tabs/AnalysisTab";
@@ -588,7 +588,6 @@ export function ProjectWorkspace({
 
   return (
     <>
-      <ToastProvider />
       {previewOpen && previewTemplate && (
         <QuestionnairePreviewModal
           projectId={project.id}

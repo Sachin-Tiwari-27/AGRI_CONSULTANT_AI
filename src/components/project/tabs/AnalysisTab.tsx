@@ -46,9 +46,9 @@ import {
   Wand2,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
-import { Button } from "@/components/ui/Button";
-import { toast } from "@/components/ui/Toast";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { FinancialModelEditor } from "@/components/analysis/FinancialModelEditor";
 import type { Report, Project, FinancialModel } from "@/types";
 

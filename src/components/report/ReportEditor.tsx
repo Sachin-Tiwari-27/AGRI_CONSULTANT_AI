@@ -1,8 +1,8 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { RichEditor } from "@/components/report/RichEditor";
 import { PaymentGateModal } from "@/components/report/PaymentGateModal";
 import { createClient } from "@/lib/supabase/client";
@@ -304,7 +304,7 @@ export function ReportEditor({
 
         {/* Publish bar */}
         <Card>
-          <CardBody className="py-3">
+          <CardContent className="py-3">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -440,7 +440,7 @@ export function ReportEditor({
                 Approve all sections before publishing.
               </div>
             )}
-          </CardBody>
+          </CardContent>
         </Card>
 
         {/* Section cards */}
@@ -503,7 +503,7 @@ export function ReportEditor({
               </CardHeader>
 
               {isExpanded && hasContent && (
-                <CardBody>
+                <CardContent>
                   {isEditing ? (
                     <div className="space-y-3">
                       {/* Toggle between rich edit and markdown preview */}
@@ -605,12 +605,12 @@ export function ReportEditor({
                       </div>
                     </div>
                   )}
-                </CardBody>
+                </CardContent>
               )}
 
               {/* Streaming skeleton */}
               {isStreaming && !hasContent && (
-                <CardBody>
+                <CardContent>
                   <div className="space-y-2 animate-pulse">
                     {[90, 75, 85, 60].map((w, i) => (
                       <div
@@ -620,7 +620,7 @@ export function ReportEditor({
                       />
                     ))}
                   </div>
-                </CardBody>
+                </CardContent>
               )}
             </Card>
           );
