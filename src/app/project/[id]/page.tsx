@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/Sidebar";
+import { Sidebar, TopBar } from "@/components/layout/Sidebar";
 import { StatusBadge } from "@/components/ui/status";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import type { Project, Report, AIFlag } from "@/types";
@@ -41,12 +40,29 @@ export default async function ProjectPage({
     : project.reports;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-surface">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <TopBar title={project.title}>
+      <main className="flex-1 overflow-y-auto min-w-0 flex flex-col">
+        <TopBar
+          title={project.title}
+          breadcrumb={
+            <span>
+              <a
+                href="/dashboard/projects"
+                className="hover:text-foreground transition-colors"
+              >
+                Projects
+              </a>
+              {" / "}
+              <span className="text-foreground/60 truncate">
+                {project.title}
+              </span>
+            </span>
+          }
+        >
           <StatusBadge status={project.status} />
         </TopBar>
+
         <ProjectWorkspace
           project={
             project as unknown as Project & {
