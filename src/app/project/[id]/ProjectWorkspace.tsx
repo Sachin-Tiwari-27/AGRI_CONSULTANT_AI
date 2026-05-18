@@ -1,9 +1,12 @@
 "use client";
+
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { OverviewTab } from "@/components/project/tabs/OverviewTab";
 import { QuestionnaireTab } from "@/components/project/tabs/QuestionnaireTab";
 import { AnalysisTab } from "@/components/project/tabs/AnalysisTab";
+import { FinancialTab } from "@/components/project/tabs/FinancialTab";
 import { ReportTab } from "@/components/project/tabs/ReportTab";
 import { LogTab } from "@/components/project/tabs/LogTab";
 import { ArtifactsTab } from "@/components/project/tabs/ArtifactsTab";
@@ -17,6 +20,7 @@ import type {
   PersonalisationDiff,
 } from "@/types";
 
+/* ── default questionnaire template (unchanged from original) ─────── */
 const DEFAULT_TEMPLATE: QuestionnaireTemplate = {
   id: "default",
   consultant_id: "",
@@ -255,6 +259,7 @@ type TabId =
   | "overview"
   | "questionnaire"
   | "analysis"
+  | "financial"
   | "report"
   | "artifacts"
   | "log";
@@ -275,15 +280,6 @@ interface Props {
   report: Report | null;
   userId: string;
 }
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "questionnaire", label: "Questionnaire" },
-  { id: "analysis", label: "Analysis" },
-  { id: "report", label: "Report" },
-  { id: "artifacts", label: "Artifacts" },
-  { id: "log", label: "Activity log" },
-];
 
 export function ProjectWorkspace({
   project: initial,
@@ -320,9 +316,11 @@ export function ProjectWorkspace({
   }
 
   async function refreshProject() {
-    const pRes = await fetch(`/api/projects/${project.id}`);
-    if (pRes.ok) setProject(await pRes.json());
+    const res = await fetch(`/api/projects/${project.id}`);
+    if (res.ok) setProject(await res.json());
   }
+
+  /* ── Actions (all unchanged from original) ────────────────────── */
 
   async function sendQuestionnaire() {
     setLoading("send_q");
@@ -331,6 +329,7 @@ export function ProjectWorkspace({
         submissions.length > 0
           ? Math.max(...submissions.map((s) => s.round)) + 1
           : 1;
+
       if (round > 1) {
         const res = await fetch("/api/questionnaire/send", {
           method: "POST",
@@ -348,9 +347,9 @@ export function ProjectWorkspace({
         setLoading(null);
         return;
       }
+
       let diff: PersonalisationDiff | null = null;
-      const callBrief = (project as any).call_brief;
-      if (callBrief) {
+      if ((project as any).call_brief) {
         try {
           const pRes = await fetch("/api/questionnaire/personalize", {
             method: "POST",
@@ -424,7 +423,7 @@ export function ProjectWorkspace({
         ];
       });
       toast.success(
-        `Gap check complete — ${data.flags?.length || 0} potential gaps found`,
+        `Gap check complete — ${data.flags?.length || 0} gaps found`,
       );
       setActiveTab("questionnaire");
     } catch (e: any) {
@@ -448,9 +447,7 @@ export function ProjectWorkspace({
         throw new Error(d.error || "Failed");
       }
       patchProject({ status: "clarification_sent" });
-      toast.success(
-        `Follow-up sent to ${project.client_email} with ${acceptedFlags.length} question(s)`,
-      );
+      toast.success(`Follow-up sent with ${acceptedFlags.length} question(s)`);
     } catch (e: any) {
       toast.error(e.message || "Failed to send follow-up");
     } finally {
@@ -485,10 +482,7 @@ export function ProjectWorkspace({
       if (updated.reports?.[0]) setReport(updated.reports[0]);
       patchProject({ status: "report_draft" });
       setActiveTab("report");
-      if (!specificSection)
-        toast.success(
-          "Report draft generated — review sections in the Report tab",
-        );
+      if (!specificSection) toast.success("Report draft generated");
     } catch (e: any) {
       toast.error(e.message || "Report generation failed");
     } finally {
@@ -508,7 +502,7 @@ export function ProjectWorkspace({
       if (!res.ok) throw new Error(data.error);
       setFlags((f) => f.map((x) => (x.id === flagId ? data.flag : x)));
     } catch (e: any) {
-      toast.error(e.message || "Failed to accept gap");
+      toast.error(e.message || "Failed");
     } finally {
       setLoading(null);
     }
@@ -526,7 +520,7 @@ export function ProjectWorkspace({
       if (!res.ok) throw new Error(data.error);
       setFlags((f) => f.map((x) => (x.id === flagId ? data.flag : x)));
     } catch (e: any) {
-      toast.error(e.message || "Failed to dismiss gap");
+      toast.error(e.message || "Failed");
     } finally {
       setLoading(null);
     }
@@ -541,7 +535,7 @@ export function ProjectWorkspace({
       setFlags((f) => f.filter((x) => x.id !== flagId));
       toast.success("Gap removed");
     } catch (e: any) {
-      toast.error(e.message || "Failed to delete gap");
+      toast.error(e.message || "Failed");
     } finally {
       setLoading(null);
     }
@@ -570,7 +564,7 @@ export function ProjectWorkspace({
       toast.success("Custom gap added");
       return true;
     } catch (e: any) {
-      toast.error(e.message || "Failed to add gap");
+      toast.error(e.message || "Failed");
       return false;
     } finally {
       setLoading(null);
@@ -579,12 +573,6 @@ export function ProjectWorkspace({
 
   const analysisEnabled = !!(latestSubmission || report);
   const reportEnabled = !!(latestSubmission || report);
-
-  function navigateTo(tab: TabId) {
-    if (tab === "analysis" && !analysisEnabled) return;
-    if (tab === "report" && !reportEnabled) return;
-    setActiveTab(tab);
-  }
 
   return (
     <>
@@ -599,48 +587,31 @@ export function ProjectWorkspace({
         />
       )}
 
-      {/* ── FIX PR-2: Tab nav is sticky below the 73px TopBar ────────────
-          top-[73px] matches TopBar height (py-5 × 2 = 40px + h1 line 33px).
-          bg-white + z-[5] ensure it sits above scrolled content but below
-          the TopBar's z-10. -mx-8 / px-8 extend the background edge-to-edge.
-      ──────────────────────────────────────────────────────────────────── */}
-      <div className="sticky top-[73px] z-[5] bg-white border-b border-slate-200 -mx-8 px-8 mb-6">
-        <div className="flex gap-1 overflow-x-auto py-0 pt-2">
-          {TABS.map((tab) => {
-            const disabled =
-              (tab.id === "analysis" && !analysisEnabled) ||
-              (tab.id === "report" && !reportEnabled);
-            const badge =
-              tab.id === "questionnaire" && pendingFlags.length > 0
-                ? pendingFlags.length
-                : undefined;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => !disabled && navigateTo(tab.id)}
-                disabled={disabled}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap flex-shrink-0 ${
-                  disabled
-                    ? "opacity-40 cursor-not-allowed border-transparent text-slate-400"
-                    : activeTab === tab.id
-                      ? "border-green-700 text-green-800"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {tab.label}
-                {badge ? (
-                  <span className="bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                    {badge}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+      {/* ── Tab nav — sticky below 64px TopBar ──────────────────── */}
+      <div className="sticky top-16 z-[5] bg-card border-b border-border px-6">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
+          <TabsList className="border-b-0 h-11 gap-0 bg-transparent w-full overflow-x-auto">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="questionnaire" badge={pendingFlags.length}>
+              Questionnaire
+            </TabsTrigger>
+            <TabsTrigger value="analysis" disabled={!analysisEnabled}>
+              Analysis
+            </TabsTrigger>
+            <TabsTrigger value="financial" disabled={!analysisEnabled}>
+              Financial
+            </TabsTrigger>
+            <TabsTrigger value="report" disabled={!reportEnabled}>
+              Report
+            </TabsTrigger>
+            <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+            <TabsTrigger value="log">Log</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Tab content — scroll-mt accounts for both TopBar and sticky tab nav */}
-      <div className="px-8 pb-8 scroll-mt-[133px]">
+      {/* ── Tab content ─────────────────────────────────────────── */}
+      <div className="px-6 py-6">
         {activeTab === "overview" && (
           <OverviewTab
             project={project}
@@ -657,7 +628,7 @@ export function ProjectWorkspace({
             onScheduled={(link) =>
               patchProject({ meet_link: link, status: "call_scheduled" })
             }
-            onNavigate={navigateTo}
+            onNavigate={(tab) => setActiveTab(tab as TabId)}
           />
         )}
         {activeTab === "questionnaire" && (
@@ -682,7 +653,11 @@ export function ProjectWorkspace({
             currency={currency}
             onGenerateReport={() => generateReport()}
             loadingReport={loading === "report"}
+            onNavigateToFinancial={() => setActiveTab("financial")}
           />
+        )}
+        {activeTab === "financial" && (
+          <FinancialTab project={project} report={report} currency={currency} />
         )}
         {activeTab === "report" && (
           <ReportTab
