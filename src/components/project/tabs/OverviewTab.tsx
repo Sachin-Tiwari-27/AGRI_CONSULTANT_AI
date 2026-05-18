@@ -1,7 +1,10 @@
 "use client";
+
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Video,
   Send,
@@ -20,63 +23,63 @@ import {
   ChevronDown,
   ChevronUp,
   FileAudio,
+  ArrowRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Project, Report, CallBrief } from "@/types";
 
-const PIPELINE_STEPS = [
+/* ── Pipeline step definitions ────────────────────────────────────── */
+const STEPS = [
   {
     key: "call",
     label: "Intro Call",
-    doneStatuses: [
-      "call_completed",
-      "questionnaire_sent",
-      "questionnaire_submitted",
-      "clarification_sent",
-      "analysis_running",
-      "report_draft",
-      "report_published",
-      "completed",
-    ],
+    done: (s: string) =>
+      [
+        "call_completed",
+        "questionnaire_sent",
+        "questionnaire_submitted",
+        "clarification_sent",
+        "analysis_running",
+        "report_draft",
+        "report_published",
+        "completed",
+      ].includes(s),
   },
   {
     key: "q",
     label: "Questionnaire",
-    doneStatuses: [
-      "questionnaire_submitted",
-      "clarification_sent",
-      "analysis_running",
-      "report_draft",
-      "report_published",
-      "completed",
-    ],
+    done: (s: string) =>
+      [
+        "questionnaire_submitted",
+        "clarification_sent",
+        "analysis_running",
+        "report_draft",
+        "report_published",
+        "completed",
+      ].includes(s),
   },
   {
     key: "ai",
     label: "Analysis",
-    doneStatuses: [
-      "analysis_running",
-      "report_draft",
-      "report_published",
-      "completed",
-    ],
+    done: (s: string) =>
+      [
+        "analysis_running",
+        "report_draft",
+        "report_published",
+        "completed",
+      ].includes(s),
   },
   {
     key: "rep",
     label: "Report",
-    doneStatuses: ["report_published", "completed"],
+    done: (s: string) => ["report_published", "completed"].includes(s),
   },
-  { key: "pay", label: "Delivered", doneStatuses: ["completed"] },
+  {
+    key: "pay",
+    label: "Delivered",
+    done: (s: string) => s === "completed",
+  },
 ];
-
-interface RecommendedAction {
-  title: string;
-  description: string;
-  buttonLabel: string;
-  action: () => void;
-  disabled: boolean;
-  loading?: boolean;
-}
 
 interface Props {
   project: Project;
@@ -91,7 +94,7 @@ interface Props {
   onGenerateReport: () => void;
   onUploadTranscript: (text: string) => void;
   onScheduled: (link: string) => void;
-  onNavigate: (tab: "questionnaire" | "analysis" | "report") => void;
+  onNavigate: (tab: string) => void;
 }
 
 export function OverviewTab({
@@ -112,138 +115,115 @@ export function OverviewTab({
   const currency = (project as any).currency || "USD";
   const callBrief = (project as any).call_brief as CallBrief | null;
 
-  const recommendedAction: RecommendedAction = (() => {
+  /* ── Derive next recommended action ─────────────────────────────── */
+  const nextAction = (() => {
     if (!hasSubmission && !(project as any).questionnaire_submissions?.length) {
       return {
-        title: "Send the initial questionnaire",
-        description: "Kick off data collection from the client.",
-        buttonLabel: "Send Questionnaire",
+        label: "Send questionnaire",
         action: onSendQuestionnaire,
-        disabled: loading === "send_q",
         loading: loading === "send_q",
       };
     }
     if (!hasSubmission) {
       return {
-        title: "Awaiting questionnaire submission",
-        description:
-          "The form link has been sent. Follow up if no response arrives.",
-        buttonLabel: "View Questionnaire",
+        label: "View questionnaire status",
         action: () => onNavigate("questionnaire"),
-        disabled: false,
+        loading: false,
       };
     }
     if (pendingFlagsCount === 0 && acceptedFlagsCount === 0 && !report) {
       return {
-        title: "Run AI gap check",
-        description:
-          "Detect missing critical inputs before generating the report.",
-        buttonLabel: "Run Gap Check",
+        label: "Run AI gap check",
         action: onRunClarify,
-        disabled: loading === "clarify",
         loading: loading === "clarify",
       };
     }
     if (pendingFlagsCount > 0) {
       return {
-        title: `Review ${pendingFlagsCount} flagged gap(s)`,
-        description:
-          "Accept or dismiss AI-identified data gaps before proceeding.",
-        buttonLabel: "Review Gaps",
+        label: `Review ${pendingFlagsCount} gap${pendingFlagsCount !== 1 ? "s" : ""}`,
         action: () => onNavigate("questionnaire"),
-        disabled: false,
+        loading: false,
       };
     }
     if (acceptedFlagsCount > 0) {
       return {
-        title: "Send follow-up clarification",
-        description:
-          "Request the accepted clarification questions from the client.",
-        buttonLabel: "Send Follow-up",
+        label: "Send follow-up",
         action: onSendFollowUp,
-        disabled: loading === "followup",
         loading: loading === "followup",
       };
     }
     if (!report) {
       return {
-        title: "Generate feasibility report draft",
-        description: "All data collected — generate the AI draft report now.",
-        buttonLabel: "Generate Report",
+        label: "Generate report",
         action: onGenerateReport,
-        disabled: loading === "report",
         loading: loading === "report",
       };
     }
     return {
-      title: "Review and refine draft report",
-      description:
-        "Open the report tab to finalise narrative, numbers, and publish.",
-      buttonLabel: "Open Report",
+      label: "Review report",
       action: () => onNavigate("report"),
-      disabled: false,
+      loading: false,
     };
   })();
 
   return (
-    <div className="grid grid-cols-3 gap-5">
+    <div className="max-w-5xl mx-auto grid grid-cols-3 gap-5">
+      {/* ── Left column (2/3) ──────────────────────────────────── */}
       <div className="col-span-2 space-y-4">
-        {/* Recommended action banner */}
-        <div className="relative overflow-hidden rounded-xl border border-green-200 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 p-5">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-green-100/40 rounded-full -mr-12 -mt-12" />
-          <p className="text-[10px] font-bold uppercase tracking-widest text-green-600 mb-1">
-            Next recommended step
-          </p>
-          <h3 className="text-sm font-semibold text-slate-900 mb-0.5">
-            {recommendedAction.title}
-          </h3>
-          <p className="text-xs text-slate-600 mb-3">
-            {recommendedAction.description}
-          </p>
+        {/* Next action banner — single prominent CTA */}
+        <div className="rounded-xl border border-brand-200 bg-brand-50 px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold text-brand-600 uppercase tracking-wide mb-0.5">
+              Next step
+            </p>
+            <p className="text-sm font-semibold text-foreground">
+              {nextAction.label}
+            </p>
+          </div>
           <Button
             size="sm"
-            onClick={recommendedAction.action}
-            disabled={recommendedAction.disabled}
-            loading={recommendedAction.loading}
+            onClick={nextAction.action}
+            loading={nextAction.loading}
           >
-            {recommendedAction.buttonLabel}
+            {nextAction.label}
+            <ArrowRight className="size-3.5" />
           </Button>
         </div>
 
-        {/* Pipeline */}
+        {/* Pipeline stepper */}
         <Card>
-          <CardHeader>
-            <h3 className="font-semibold text-slate-900 text-sm">
-              Project Pipeline
-            </h3>
-          </CardHeader>
-          <CardContent className="py-6 px-4">
-            <div className="relative flex items-center justify-between w-full">
-              <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 h-0.5 bg-slate-100 rounded-full z-0" />
-              {PIPELINE_STEPS.map((step, i, arr) => {
-                const done = step.doneStatuses.includes(project.status);
-                const isActive =
-                  done && !arr[i + 1]?.doneStatuses.includes(project.status);
+          <CardContent className="py-5 px-6">
+            <div className="relative flex items-center justify-between">
+              {/* Connecting line */}
+              <div className="absolute inset-x-8 top-4 h-px bg-border z-0" />
+              {STEPS.map((step, i, arr) => {
+                const done = step.done(project.status);
+                const isNext =
+                  !done && (i === 0 || arr[i - 1].done(project.status));
                 return (
                   <div
                     key={step.key}
                     className="relative z-10 flex flex-col items-center gap-2"
                   >
                     <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm border-2 transition-all ${isActive ? "bg-green-600 border-green-600 text-white shadow-lg shadow-green-200" : done ? "bg-green-50 border-green-500 text-green-700" : "bg-white border-slate-200 text-slate-400"}`}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-colors ${
+                        done
+                          ? "bg-brand-800 border-brand-800 text-white"
+                          : isNext
+                            ? "bg-white border-brand-500 text-brand-700 shadow-sm"
+                            : "bg-white border-border text-muted-foreground"
+                      }`}
                     >
-                      {done ? (
-                        isActive ? (
-                          i + 1
-                        ) : (
-                          <CheckCircle className="w-4 h-4" />
-                        )
-                      ) : (
-                        i + 1
-                      )}
+                      {done ? <CheckCircle className="size-3.5" /> : i + 1}
                     </div>
                     <span
-                      className={`text-[10px] uppercase tracking-wider font-semibold ${isActive ? "text-green-700" : done ? "text-slate-700" : "text-slate-400"}`}
+                      className={`text-[10px] font-medium uppercase tracking-wide ${
+                        done
+                          ? "text-brand-800"
+                          : isNext
+                            ? "text-foreground"
+                            : "text-muted-foreground"
+                      }`}
                     >
                       {step.label}
                     </span>
@@ -254,21 +234,21 @@ export function OverviewTab({
           </CardContent>
         </Card>
 
-        {/* Call section */}
+        {/* Intro Call */}
         <Card>
-          <CardHeader>
-            <h3 className="font-semibold text-slate-900 text-sm">Intro Call</h3>
+          <CardHeader className="pb-3">
+            <CardTitle>Intro Call</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="pt-0 space-y-3">
             {project.meet_link ? (
               <a
                 href={project.meet_link}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
               >
-                <Video className="w-4 h-4 text-blue-700" />
-                <div>
+                <Video className="size-4 text-blue-700 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-blue-800">
                     Open Google Meet
                   </p>
@@ -278,7 +258,7 @@ export function OverviewTab({
                     </p>
                   )}
                 </div>
-                <ExternalLink className="w-3.5 h-3.5 text-blue-500 ml-auto" />
+                <ExternalLink className="size-3.5 text-blue-500" />
               </a>
             ) : (
               <ScheduleCallCard
@@ -287,80 +267,24 @@ export function OverviewTab({
               />
             )}
 
-            {/* Transcript upload */}
             <TranscriptUploadCard
               hasBrief={!!callBrief}
               loading={loading === "transcript"}
               onUpload={onUploadTranscript}
             />
 
-            {/* Call brief summary */}
             {callBrief && <CallBriefCard brief={callBrief} />}
-          </CardContent>
-        </Card>
-
-        {/* Actions */}
-        <Card>
-          <CardHeader>
-            <h3 className="font-semibold text-slate-900 text-sm">Actions</h3>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ActionRow
-              icon={Send}
-              title="Send questionnaire"
-              sub={
-                hasSubmission
-                  ? `Submitted ${formatDate((project as any).questionnaire_submissions?.find((s: any) => s.submitted_at)?.submitted_at || "")}`
-                  : "Not sent yet"
-              }
-              buttonLabel="Send"
-              onClick={onSendQuestionnaire}
-              loading={loading === "send_q"}
-              disabled={!!hasSubmission}
-            />
-            {hasSubmission && (
-              <ActionRow
-                icon={Zap}
-                title="Run AI gap check"
-                sub={
-                  pendingFlagsCount > 0
-                    ? `${pendingFlagsCount} gap(s) pending review`
-                    : "Check for missing data"
-                }
-                buttonLabel="Run"
-                onClick={onRunClarify}
-                loading={loading === "clarify"}
-                iconColor="text-purple-500"
-              />
-            )}
-            {hasSubmission && (
-              <ActionRow
-                icon={FileText}
-                title="Generate feasibility report"
-                sub={
-                  report
-                    ? "Report exists — regenerate all sections"
-                    : "AI-draft all sections from project data"
-                }
-                buttonLabel={report ? "Regenerate" : "Generate"}
-                onClick={onGenerateReport}
-                loading={loading === "report"}
-                iconColor="text-green-600"
-              />
-            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Right: project info */}
+      {/* ── Right column (1/3) ─────────────────────────────────── */}
       <div className="space-y-4">
         <Card>
-          <CardHeader>
-            <h3 className="font-semibold text-slate-900 text-sm">
-              Project Details
-            </h3>
+          <CardHeader className="pb-3">
+            <CardTitle>Project details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="pt-0 space-y-3">
             {[
               { icon: Users, label: "Client", value: project.client_name },
               {
@@ -388,11 +312,13 @@ export function OverviewTab({
                 value: formatDate(project.created_at),
               },
             ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-start gap-3">
-                <Icon className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className="text-sm text-slate-800">{value}</p>
+              <div key={label} className="flex items-start gap-2.5">
+                <Icon className="size-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground">{label}</p>
+                  <p className="text-xs text-foreground font-medium truncate">
+                    {value}
+                  </p>
                 </div>
               </div>
             ))}
@@ -401,13 +327,11 @@ export function OverviewTab({
 
         {project.consultant_notes && (
           <Card>
-            <CardHeader>
-              <h3 className="font-semibold text-slate-900 text-sm">
-                Call Notes
-              </h3>
+            <CardHeader className="pb-3">
+              <CardTitle>Call notes</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+            <CardContent className="pt-0">
+              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
                 {project.consultant_notes}
               </p>
             </CardContent>
@@ -418,7 +342,7 @@ export function OverviewTab({
   );
 }
 
-// ── Transcript upload card ────────────────────────────────────────────
+/* ── Transcript upload ────────────────────────────────────────────── */
 function TranscriptUploadCard({
   hasBrief,
   loading,
@@ -428,59 +352,50 @@ function TranscriptUploadCard({
   loading: boolean;
   onUpload: (text: string) => void;
 }) {
-  const [dragging, setDragging] = useState(false);
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
-    const text = await file.text();
-    onUpload(text);
+    onUpload(await file.text());
   }
 
   return (
     <div
-      className={`rounded-lg border-2 border-dashed p-3 transition-colors ${dragging ? "border-green-400 bg-green-50" : "border-slate-200 bg-slate-50/40"}`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
+      className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3"
+      onDragOver={(e) => e.preventDefault()}
       onDrop={async (e) => {
         e.preventDefault();
-        setDragging(false);
         const f = e.dataTransfer.files[0];
         if (f) await handleFile(f);
       }}
     >
       <div className="flex items-center gap-2 mb-2">
-        <FileAudio className="w-3.5 h-3.5 text-slate-400" />
-        <p className="text-xs font-medium text-slate-700">
+        <FileAudio className="size-3.5 text-muted-foreground" />
+        <p className="text-xs font-medium text-foreground">
           {hasBrief ? "Call brief extracted ✓" : "Upload call transcript"}
         </p>
         {hasBrief && (
-          <span className="ml-auto text-[10px] text-green-700 font-medium flex items-center gap-1">
-            <Sparkles className="w-3 h-3" /> AI brief ready
-          </span>
+          <Badge variant="green" className="ml-auto">
+            <Sparkles className="size-2.5" /> AI brief ready
+          </Badge>
         )}
       </div>
 
       {!pasteMode ? (
         <div className="flex gap-2">
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => fileRef.current?.click()}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors disabled:opacity-50"
+            loading={loading}
           >
-            <Upload className="w-3 h-3" />
+            <Upload className="size-3" />
             {loading ? "Processing…" : "Upload .txt / .vtt"}
-          </button>
-          <button
-            onClick={() => setPasteMode(true)}
-            className="text-xs text-slate-500 hover:text-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
-          >
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setPasteMode(true)}>
             Paste text
-          </button>
+          </Button>
           <input
             ref={fileRef}
             type="file"
@@ -499,7 +414,7 @@ function TranscriptUploadCard({
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             placeholder="Paste call transcript or notes here…"
-            className="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none bg-white"
+            className="w-full text-xs px-3 py-2 rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
           />
           <div className="flex gap-2">
             <Button
@@ -512,7 +427,7 @@ function TranscriptUploadCard({
               loading={loading}
               disabled={!pasteText.trim()}
             >
-              <Sparkles className="w-3 h-3" /> Extract brief
+              <Sparkles className="size-3" /> Extract brief
             </Button>
             <Button
               size="sm"
@@ -531,13 +446,14 @@ function TranscriptUploadCard({
   );
 }
 
-// ── Call brief display card ───────────────────────────────────────────
+/* ── Call brief card ─────────────────────────────────────────────── */
 function CallBriefCard({ brief }: { brief: CallBrief }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
+
   const items = [
     brief.budget_range && { label: "Budget", value: brief.budget_range },
     brief.crop_types?.length && {
-      label: "Crops mentioned",
+      label: "Crops",
       value: brief.crop_types.join(", "),
     },
     brief.experience_level && {
@@ -546,49 +462,53 @@ function CallBriefCard({ brief }: { brief: CallBrief }) {
     },
     brief.agro_tourism_interest && {
       label: "Agro-tourism",
-      value: "Mentioned interest",
+      value: "Interest noted",
     },
     brief.water_source_mentioned && {
-      label: "Water source",
+      label: "Water",
       value: brief.water_source_mentioned,
     },
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
-    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+    <div className="rounded-lg border border-purple-200 bg-purple-50 px-4 py-3">
       <button
-        onClick={() => setExpanded((e) => !e)}
+        onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 text-left"
       >
-        <Sparkles className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+        <Sparkles className="size-3.5 text-purple-600 flex-shrink-0" />
         <p className="text-xs font-semibold text-purple-800 flex-1">
           AI-extracted call brief
         </p>
-        {expanded ? (
-          <ChevronUp className="w-3 h-3 text-purple-400" />
+        {open ? (
+          <ChevronUp className="size-3.5 text-purple-400" />
         ) : (
-          <ChevronDown className="w-3 h-3 text-purple-400" />
+          <ChevronDown className="size-3.5 text-purple-400" />
         )}
       </button>
 
-      {expanded && (
+      {open && (
         <div className="mt-3 space-y-1.5">
           {items.map(({ label, value }) => (
             <div key={label} className="flex gap-2">
-              <span className="text-[11px] text-purple-600 font-medium w-28 flex-shrink-0">
+              <span className="text-[11px] text-purple-600 font-medium w-24 flex-shrink-0">
                 {label}
               </span>
               <span className="text-[11px] text-purple-900">{value}</span>
             </div>
           ))}
           {brief.key_concerns?.length ? (
-            <div>
+            <div className="mt-2">
               <p className="text-[11px] text-purple-600 font-medium mb-1">
                 Key concerns
               </p>
-              <ul className="list-disc pl-4 space-y-0.5">
+              <ul className="space-y-0.5">
                 {brief.key_concerns.map((c, i) => (
-                  <li key={i} className="text-[11px] text-purple-900">
+                  <li
+                    key={i}
+                    className="text-[11px] text-purple-900 flex gap-1.5"
+                  >
+                    <span className="text-purple-400">·</span>
                     {c}
                   </li>
                 ))}
@@ -601,49 +521,7 @@ function CallBriefCard({ brief }: { brief: CallBrief }) {
   );
 }
 
-// ── Reusable action row ───────────────────────────────────────────────
-function ActionRow({
-  icon: Icon,
-  title,
-  sub,
-  buttonLabel,
-  onClick,
-  loading,
-  disabled,
-  iconColor = "text-slate-500",
-}: {
-  icon: any;
-  title: string;
-  sub: string;
-  buttonLabel: string;
-  onClick: () => void;
-  loading?: boolean;
-  disabled?: boolean;
-  iconColor?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors">
-      <div className="flex items-center gap-3">
-        <Icon className={`w-4 h-4 ${iconColor}`} />
-        <div>
-          <p className="text-sm font-medium text-slate-800">{title}</p>
-          <p className="text-xs text-slate-500">{sub}</p>
-        </div>
-      </div>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onClick}
-        loading={loading}
-        disabled={disabled || loading}
-      >
-        {buttonLabel}
-      </Button>
-    </div>
-  );
-}
-
-// ── Schedule call card ────────────────────────────────────────────────
+/* ── Schedule call ───────────────────────────────────────────────── */
 function ScheduleCallCard({
   projectId,
   onScheduled,
@@ -673,7 +551,7 @@ function ScheduleCallCard({
         return;
       }
       if (!res.ok) {
-        setError(data.error || "Failed to schedule.");
+        setError(data.error || "Failed");
         return;
       }
       if (data.meetLink) onScheduled(data.meetLink);
@@ -685,11 +563,11 @@ function ScheduleCallCard({
   }
 
   return (
-    <div className="p-3 rounded-lg border border-slate-200">
-      <div className="flex items-center gap-3 mb-3">
-        <Calendar className="w-4 h-4 text-slate-500" />
-        <p className="text-sm font-medium text-slate-800">
-          Schedule intro call (Google Meet)
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Calendar className="size-3.5 text-muted-foreground" />
+        <p className="text-xs font-medium text-foreground">
+          Schedule intro call
         </p>
       </div>
       <div className="flex gap-2">
@@ -697,13 +575,13 @@ function ScheduleCallCard({
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="flex-1 h-8 px-2.5 text-xs rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <input
           type="time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
-          className="w-28 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="w-24 h-8 px-2.5 text-xs rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <Button
           size="sm"
@@ -715,7 +593,7 @@ function ScheduleCallCard({
         </Button>
       </div>
       {error && (
-        <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="mt-2 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2">
           {error}
         </p>
       )}
