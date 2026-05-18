@@ -15,7 +15,10 @@ export function generateToken(length = 32): string {
 }
 
 export function formatCurrency(amount: number, currency = "USD"): string {
-  return `${currency} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatDate(date: string | Date): string {
@@ -39,9 +42,6 @@ export function parseGPS(coords: string): { lat: number; lon: number } | null {
   return { lat: parseFloat(match[1]), lon: parseFloat(match[2]) };
 }
 
-// ── Single source of truth for currency detection ─────────────────────
-// Previously duplicated as detectCurrency() in clarify/route.ts
-// and detectCurrencyFromCountry() in report/generate/route.ts — now unified here.
 const COUNTRY_CURRENCY_MAP: [RegExp, string][] = [
   [/\boman\b|sultanate of oman/i, "OMR"],
   [/\buae\b|emirates|dubai|abu dhabi|sharjah/i, "AED"],
@@ -71,10 +71,20 @@ export function detectCurrencyFromCountry(country?: string | null): string {
   return "USD";
 }
 
+export function getCurrencyByGPS(coords: string): string {
+  const parsed = parseGPS(coords);
+  if (!parsed) return "OMR";
+  const { lat, lon } = parsed;
+  if (lat >= 16 && lat <= 27 && lon >= 52 && lon <= 60) return "OMR";
+  if (lat >= 22 && lat <= 26 && lon >= 51 && lon <= 57) return "AED";
+  if (lat >= 16 && lat <= 33 && lon >= 34 && lon <= 56) return "SAR";
+  if (lat >= 24 && lat <= 27 && lon >= 50 && lon <= 52) return "QAR";
+  if (lat >= 28 && lat <= 31 && lon >= 46 && lon <= 49) return "KWD";
+  if (lat >= 25 && lat <= 27 && lon >= 50 && lon <= 51) return "BHD";
+  return "USD";
+}
+
 // ── Answer sanitisation ───────────────────────────────────────────────
-// Converts raw questionnaire JSONB answers into a flat, safe string record
-// suitable for injecting into AI prompts. Strips file-upload objects,
-// normalises booleans, joins arrays, truncates long values.
 
 const QUESTION_LABELS: Record<string, string> = {
   q1: "Legal Entity / Company Name",
@@ -127,7 +137,6 @@ function scalarise(val: unknown, maxChars = 300): string {
     const name = obj.filename ?? obj.file_path ?? "uploaded file";
     return `[File uploaded: ${name}]`;
   }
-  // Fallback for unexpected object shapes
   try {
     return JSON.stringify(val).slice(0, maxChars);
   } catch {
@@ -135,38 +144,21 @@ function scalarise(val: unknown, maxChars = 300): string {
   }
 }
 
-/**
- * Sanitises raw questionnaire answers from Supabase JSONB into a flat,
- * human-readable labelled record safe for injecting into AI prompts.
- *
- * - Drops file-upload objects (replaces with "[File uploaded: filename]")
- * - Converts booleans to "Yes" / "No"
- * - Joins arrays with comma
- * - Applies human-readable labels (q6 → "Primary Water Source")
- * - Truncates individual values to maxValueChars
- */
 export function sanitiseAnswers(
   answers: Record<string, unknown>,
   options: { useLabels?: boolean; maxValueChars?: number } = {},
 ): Record<string, string> {
   const { useLabels = true, maxValueChars = 300 } = options;
   const result: Record<string, string> = {};
-
   for (const [key, val] of Object.entries(answers)) {
     const sanitised = scalarise(val, maxValueChars);
-    if (!sanitised) continue; // skip empty values
+    if (!sanitised) continue;
     const label = useLabels ? (QUESTION_LABELS[key] ?? key) : key;
     result[label] = sanitised;
   }
-
   return result;
 }
 
-/**
- * Serialises sanitised answers to a string for AI prompt injection.
- * Applies key filtering if relevantKeys is provided.
- * Hard-truncates the final string to maxChars.
- */
 export function serialiseAnswersForPrompt(
   answers: Record<string, unknown>,
   options: {
@@ -176,7 +168,6 @@ export function serialiseAnswersForPrompt(
   } = {},
 ): string {
   const { relevantKeys, maxChars = 2000, useLabels = true } = options;
-
   let filtered = answers;
   if (relevantKeys && relevantKeys.length > 0) {
     filtered = Object.fromEntries(
@@ -184,14 +175,11 @@ export function serialiseAnswersForPrompt(
         relevantKeys.some((rk) => k.toLowerCase().includes(rk.toLowerCase())),
       ),
     );
-    // If filtering left nothing, fall back to full set
     if (Object.keys(filtered).length === 0) filtered = answers;
   }
-
   const sanitised = sanitiseAnswers(filtered, { useLabels });
   const lines = Object.entries(sanitised).map(([k, v]) => `${k}: ${v}`);
   const joined = lines.join("\n");
-
   if (joined.length <= maxChars) return joined;
   return joined.slice(0, maxChars) + "\n... [truncated]";
 }
@@ -205,34 +193,21 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   analysis_running: "Analysis Running",
   report_draft: "Report Draft",
   report_review: "Report In Review",
-  report_published: "Report Published",
+  report_published: "Published",
   payment_pending: "Payment Pending",
   completed: "Completed",
 };
 
 export const PROJECT_STATUS_COLORS: Record<string, string> = {
-  call_scheduled: "bg-blue-100 text-blue-800",
-  call_completed: "bg-blue-100 text-blue-800",
-  questionnaire_sent: "bg-amber-100 text-amber-800",
-  questionnaire_submitted: "bg-amber-100 text-amber-800",
-  clarification_sent: "bg-orange-100 text-orange-800",
-  analysis_running: "bg-purple-100 text-purple-800",
-  report_draft: "bg-purple-100 text-purple-800",
-  report_review: "bg-purple-100 text-purple-800",
-  report_published: "bg-green-100 text-green-800",
-  payment_pending: "bg-yellow-100 text-yellow-800",
-  completed: "bg-green-100 text-green-800",
+  call_scheduled: "bg-blue-50 text-blue-700 border-blue-200",
+  call_completed: "bg-blue-50 text-blue-700 border-blue-200",
+  questionnaire_sent: "bg-amber-50 text-amber-700 border-amber-200",
+  questionnaire_submitted: "bg-orange-50 text-orange-700 border-orange-200",
+  clarification_sent: "bg-orange-50 text-orange-700 border-orange-200",
+  analysis_running: "bg-purple-50 text-purple-700 border-purple-200",
+  report_draft: "bg-violet-50 text-violet-700 border-violet-200",
+  report_review: "bg-violet-50 text-violet-700 border-violet-200",
+  report_published: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  payment_pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
-
-export function getCurrencyByGPS(coords: string): string {
-  const parsed = parseGPS(coords);
-  if (!parsed) return "OMR";
-  const { lat, lon } = parsed;
-  if (lat >= 16 && lat <= 27 && lon >= 52 && lon <= 60) return "OMR";
-  if (lat >= 22 && lat <= 26 && lon >= 51 && lon <= 57) return "AED";
-  if (lat >= 16 && lat <= 33 && lon >= 34 && lon <= 56) return "SAR";
-  if (lat >= 24 && lat <= 27 && lon >= 50 && lon <= 52) return "QAR";
-  if (lat >= 28 && lat <= 31 && lon >= 46 && lon <= 49) return "KWD";
-  if (lat >= 25 && lat <= 27 && lon >= 50 && lon <= 51) return "BHD";
-  return "USD";
-}

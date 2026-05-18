@@ -16,7 +16,7 @@ import { gfm } from "turndown-plugin-gfm";
 
 // ── Markdown → HTML (for loading into Tiptap) ─────────────────────────
 // No custom table renderer here — Tiptap needs raw <table> tags.
-// Wrapping is handled in MarkdownRenderer.tsx specifically for preview.
+// Wrapping is handled in markdown-renderer.tsx specifically for preview.
 
 marked.setOptions({
   gfm: true, // GitHub Flavored Markdown (tables, strikethrough)

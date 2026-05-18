@@ -1,13 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardBody,
+  CardContent,
   CardHeader,
   CardFooter,
-  Badge,
-} from "@/components/ui/Card";
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Send,
   Zap,
@@ -30,7 +30,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { toast } from "@/components/ui/Toast";
+import { toast } from "@/components/ui/toast";
 import type { AIFlag, Project, QuestionnaireSendLog } from "@/types";
 
 const QUESTION_LABELS: Record<string, string> = {
@@ -393,7 +393,7 @@ export function QuestionnaireTab({
                   </button>
                 </div>
               </CardHeader>
-              <CardBody className="space-y-3">
+              <CardContent className="space-y-3">
                 <div>
                   <label className="text-xs font-medium text-slate-600 block mb-1">
                     Field / Topic *
@@ -476,7 +476,7 @@ export function QuestionnaireTab({
                     </Button>
                   </div>
                 </div>
-              </CardBody>
+              </CardContent>
             </Card>
           )}
 
@@ -694,7 +694,7 @@ function SubmissionCard({
       </CardHeader>
 
       {expanded && submission.answers && (
-        <CardBody className="border-t border-slate-100 bg-slate-50/30 p-0">
+        <CardContent className="border-t border-slate-100 bg-slate-50/30 p-0">
           {ANSWER_SECTIONS.map((section) => {
             const answers = section.keys
               .filter(
@@ -748,7 +748,7 @@ function SubmissionCard({
               </div>
             );
           })}
-        </CardBody>
+        </CardContent>
       )}
 
       <CardFooter>

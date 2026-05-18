@@ -1,18 +1,18 @@
-'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Button } from '@/components/ui/Button'
-import { Field, Input, Textarea, Select } from '@/components/ui/FormFields'
-import { X, Plus, MapPin } from 'lucide-react'
-import { getCurrencyByGPS } from '@/lib/utils'
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Field, Input, Textarea, Select } from "@/components/ui/FormFields";
+import { X, Plus, MapPin } from "lucide-react";
+import { getCurrencyByGPS } from "@/lib/utils";
 
 const schema = z.object({
-  title: z.string().min(3, 'Title is required'),
-  client_name: z.string().min(2, 'Client name is required'),
-  client_email: z.string().email('Valid email required'),
+  title: z.string().min(3, "Title is required"),
+  client_name: z.string().min(2, "Client name is required"),
+  client_email: z.string().email("Valid email required"),
   region: z.string().optional(),
   country: z.string().optional(),
   gps_coordinates: z.string().optional(),
@@ -22,77 +22,98 @@ const schema = z.object({
   currency: z.string().optional(),
   experience_level: z.string().optional(),
   consultant_notes: z.string().optional(),
-})
+});
 
-type FormData = z.infer<typeof schema>
+type FormData = z.infer<typeof schema>;
 
 const CROP_OPTIONS = [
-  'Cherry Tomato', 'Beef Tomato', 'Capsicum', 'Cucumber', 'Lettuce',
-  'Herbs', 'Strawberry', 'Microgreens', 'Fig', 'Chilli', 'Eggplant', 'Other',
-]
+  "Cherry Tomato",
+  "Beef Tomato",
+  "Capsicum",
+  "Cucumber",
+  "Lettuce",
+  "Herbs",
+  "Strawberry",
+  "Microgreens",
+  "Fig",
+  "Chilli",
+  "Eggplant",
+  "Other",
+];
 
 export function CreateProjectModal({ onClose }: { onClose: () => void }) {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [selectedCrops, setSelectedCrops] = useState<string[]>([])
-  const [customCrop, setCustomCrop] = useState('')
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
+  const [customCrop, setCustomCrop] = useState("");
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<FormData>({
     resolver: zodResolver(schema),
-  })
+  });
 
-  const watchedGPS = watch('gps_coordinates')
+  const watchedGPS = watch("gps_coordinates");
 
   // Auto-set currency when GPS changes
   useState(() => {
     if (watchedGPS) {
-      const currency = getCurrencyByGPS(watchedGPS)
-      setValue('currency', currency)
+      const currency = getCurrencyByGPS(watchedGPS);
+      setValue("currency", currency);
     }
-  })
+  });
 
   // We use useEffect to react to watch changes
-  const React = require('react')
+  const React = require("react");
   React.useEffect(() => {
     if (watchedGPS) {
-      const currency = getCurrencyByGPS(watchedGPS)
-      setValue('currency', currency)
+      const currency = getCurrencyByGPS(watchedGPS);
+      setValue("currency", currency);
     }
-  }, [watchedGPS, setValue])
+  }, [watchedGPS, setValue]);
 
   function toggleCrop(crop: string) {
-    setSelectedCrops(prev =>
-      prev.includes(crop) ? prev.filter(c => c !== crop) : [...prev, crop]
-    )
+    setSelectedCrops((prev) =>
+      prev.includes(crop) ? prev.filter((c) => c !== crop) : [...prev, crop],
+    );
   }
 
   function addCustomCrop() {
-    const trimmed = customCrop.trim()
+    const trimmed = customCrop.trim();
     if (trimmed && !selectedCrops.includes(trimmed)) {
-      setSelectedCrops(prev => [...prev.filter(c => c !== 'Other'), trimmed])
-      setCustomCrop('')
+      setSelectedCrops((prev) => [
+        ...prev.filter((c) => c !== "Other"),
+        trimmed,
+      ]);
+      setCustomCrop("");
     }
   }
 
   async function onSubmit(data: FormData) {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...data,
-          land_size_sqm: data.land_size_sqm ? parseFloat(data.land_size_sqm) : undefined,
+          land_size_sqm: data.land_size_sqm
+            ? parseFloat(data.land_size_sqm)
+            : undefined,
           crop_types: selectedCrops,
         }),
-      })
-      const project = await res.json()
-      if (!res.ok) throw new Error(project.error)
-      router.push(`/project/${project.id}`)
+      });
+      const project = await res.json();
+      if (!res.ok) throw new Error(project.error);
+      router.push(`/project/${project.id}`);
     } catch (err) {
-      alert('Failed to create project. Please try again.')
+      alert("Failed to create project. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -101,7 +122,10 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-100 flex items-center justify-between rounded-t-2xl">
           <h2 className="text-lg font-semibold text-slate-900">New project</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-100"
+          >
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
@@ -109,63 +133,102 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
           {/* Client info */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Client</h3>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Client
+            </h3>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Project title" error={errors.title?.message} required>
-                <Input {...register('title')} placeholder="e.g. Al Hamra Greenhouse Farm" />
+              <Field
+                label="Project title"
+                error={errors.title?.message}
+                required
+              >
+                <Input
+                  {...register("title")}
+                  placeholder="e.g. Al Hamra Greenhouse Farm"
+                />
               </Field>
-              <Field label="Client name" error={errors.client_name?.message} required>
-                <Input {...register('client_name')} placeholder="Ahmed Al Abri" />
+              <Field
+                label="Client name"
+                error={errors.client_name?.message}
+                required
+              >
+                <Input
+                  {...register("client_name")}
+                  placeholder="Ahmed Al Abri"
+                />
               </Field>
-              <Field label="Client email" error={errors.client_email?.message} required>
-                <Input {...register('client_email')} type="email" placeholder="client@example.com" className="col-span-2" />
+              <Field
+                label="Client email"
+                error={errors.client_email?.message}
+                required
+              >
+                <Input
+                  {...register("client_email")}
+                  type="email"
+                  placeholder="client@example.com"
+                  className="col-span-2"
+                />
               </Field>
             </div>
           </div>
 
           {/* Site info */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Site</h3>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Site
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Region / City">
-                <Input {...register('region')} placeholder="Al Hamra" />
+                <Input {...register("region")} placeholder="Al Hamra" />
               </Field>
               <Field label="Country">
-                <Input {...register('country')} placeholder="Oman" />
+                <Input {...register("country")} placeholder="Oman" />
               </Field>
               <Field label="GPS coordinates" hint="Paste from Google Maps">
-                <Input {...register('gps_coordinates')} placeholder="23.1234, 57.5678" />
+                <Input
+                  {...register("gps_coordinates")}
+                  placeholder="23.1234, 57.5678"
+                />
               </Field>
               <Field label="Land size (sqm)">
-                <Input {...register('land_size_sqm')} type="number" placeholder="38486" />
+                <Input
+                  {...register("land_size_sqm")}
+                  type="number"
+                  placeholder="38486"
+                />
               </Field>
             </div>
           </div>
 
           {/* Project type */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Project</h3>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Project
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Project type">
                 <Select
-                  {...register('project_type')}
+                  {...register("project_type")}
                   options={[
-                    { value: 'greenhouse_turnkey', label: 'Greenhouse Turnkey' },
-                    { value: 'expansion', label: 'Expansion' },
-                    { value: 'feasibility_only', label: 'Feasibility Only' },
-                    { value: 'agro_tourism', label: 'Agro-Tourism' },
+                    {
+                      value: "greenhouse_turnkey",
+                      label: "Greenhouse Turnkey",
+                    },
+                    { value: "expansion", label: "Expansion" },
+                    { value: "feasibility_only", label: "Feasibility Only" },
+                    { value: "agro_tourism", label: "Agro-Tourism" },
                   ]}
                   placeholder="Select type"
                 />
               </Field>
               <Field label="Client experience">
                 <Select
-                  {...register('experience_level')}
+                  {...register("experience_level")}
                   options={[
-                    { value: 'first_time', label: 'First-time grower' },
-                    { value: '1_3_years', label: '1–3 years' },
-                    { value: '3_6_years', label: '3–6 years' },
-                    { value: '6_plus_years', label: '6+ years' },
+                    { value: "first_time", label: "First-time grower" },
+                    { value: "1_3_years", label: "1–3 years" },
+                    { value: "3_6_years", label: "3–6 years" },
+                    { value: "6_plus_years", label: "6+ years" },
                   ]}
                   placeholder="Select experience"
                 />
@@ -173,49 +236,57 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               <Field label="Budget range">
                 <div className="flex gap-2">
                   <Select
-                    {...register('currency')}
+                    {...register("currency")}
                     className="w-24"
                     options={[
-                      { value: 'OMR', label: 'OMR' },
-                      { value: 'USD', label: 'USD' },
-                      { value: 'AED', label: 'AED' },
-                      { value: 'SAR', label: 'SAR' },
-                      { value: 'QAR', label: 'QAR' },
-                      { value: 'KWD', label: 'KWD' },
-                      { value: 'BHD', label: 'BHD' },
+                      { value: "OMR", label: "OMR" },
+                      { value: "USD", label: "USD" },
+                      { value: "AED", label: "AED" },
+                      { value: "SAR", label: "SAR" },
+                      { value: "QAR", label: "QAR" },
+                      { value: "KWD", label: "KWD" },
+                      { value: "BHD", label: "BHD" },
                     ]}
                   />
-                  <Input {...register('budget_range')} placeholder="e.g. 500,000 – 800,000" className="flex-1" />
+                  <Input
+                    {...register("budget_range")}
+                    placeholder="e.g. 500,000 – 800,000"
+                    className="flex-1"
+                  />
                 </div>
               </Field>
             </div>
           </div>
 
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Target crops</h3>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Target crops
+            </h3>
             <div className="flex flex-wrap gap-2">
-              {CROP_OPTIONS.map(crop => (
+              {CROP_OPTIONS.map((crop) => (
                 <button
                   key={crop}
                   type="button"
                   onClick={() => toggleCrop(crop)}
                   className={`px-3 py-1 rounded-full text-sm border transition-colors ${
                     selectedCrops.includes(crop)
-                      ? 'bg-green-800 text-white border-green-800'
-                      : 'bg-white text-slate-600 border-slate-300 hover:border-green-400'
+                      ? "bg-green-800 text-white border-green-800"
+                      : "bg-white text-slate-600 border-slate-300 hover:border-green-400"
                   }`}
                 >
                   {crop}
                 </button>
               ))}
             </div>
-            {selectedCrops.includes('Other') && (
+            {selectedCrops.includes("Other") && (
               <div className="flex gap-2 mt-3">
                 <input
                   type="text"
                   value={customCrop}
-                  onChange={e => setCustomCrop(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomCrop())}
+                  onChange={(e) => setCustomCrop(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), addCustomCrop())
+                  }
                   placeholder="Type custom crop name..."
                   className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
@@ -228,14 +299,27 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
             )}
-            {selectedCrops.filter(c => c !== 'Other').length > 0 && (
+            {selectedCrops.filter((c) => c !== "Other").length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {selectedCrops.filter(c => !CROP_OPTIONS.includes(c)).map(c => (
-                  <span key={c} className="px-2 py-0.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full flex items-center gap-1">
-                    {c}
-                    <button type="button" onClick={() => setSelectedCrops(p => p.filter(x => x !== c))} className="hover:text-red-500">×</button>
-                  </span>
-                ))}
+                {selectedCrops
+                  .filter((c) => !CROP_OPTIONS.includes(c))
+                  .map((c) => (
+                    <span
+                      key={c}
+                      className="px-2 py-0.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full flex items-center gap-1"
+                    >
+                      {c}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedCrops((p) => p.filter((x) => x !== c))
+                        }
+                        className="hover:text-red-500"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
               </div>
             )}
           </div>
@@ -243,14 +327,19 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
           {/* Notes */}
           <Field label="Call notes / brief">
             <Textarea
-              {...register('consultant_notes')}
+              {...register("consultant_notes")}
               placeholder="Key points from the intro conversation..."
               className="min-h-[80px]"
             />
           </Field>
 
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="flex-1"
+            >
               Cancel
             </Button>
             <Button type="submit" loading={loading} className="flex-1">
@@ -261,5 +350,5 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
         </form>
       </div>
     </div>
-  )
+  );
 }

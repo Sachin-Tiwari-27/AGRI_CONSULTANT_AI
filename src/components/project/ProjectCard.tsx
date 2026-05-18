@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { StatusBadge } from "@/components/ui/Card";
+import { StatusBadge } from "@/components/ui/status";
 import { formatDate } from "@/lib/utils";
 import { MapPin, Calendar, Wheat, ArrowRight } from "lucide-react";
 import type { Project } from "@/types";

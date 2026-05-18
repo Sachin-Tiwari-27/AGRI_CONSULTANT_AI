@@ -1,8 +1,8 @@
 "use client";
 import { useState, useRef } from "react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/FormFields";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import {
   Save,
   Upload,
@@ -118,7 +118,7 @@ export function BrandingSettingsForm({ profile }: Props) {
           </button>
         </div>
       </CardHeader>
-      <CardBody className="space-y-5">
+      <CardContent className="space-y-5">
         {/* Live preview */}
         {preview && (
           <div
@@ -313,7 +313,7 @@ export function BrandingSettingsForm({ profile }: Props) {
             <Save className="w-4 h-4" /> Save branding
           </Button>
         </div>
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }

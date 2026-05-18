@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Card, CardBody } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, LogOut } from "lucide-react";
@@ -20,7 +20,7 @@ export function DangerZone() {
 
   return (
     <Card className="border-red-100 bg-red-50/30">
-      <CardBody className="space-y-4">
+      <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-red-600" />
           <p className="text-sm font-semibold text-red-900">Danger zone</p>
@@ -85,7 +85,7 @@ export function DangerZone() {
             </div>
           )}
         </div>
-      </CardBody>
+      </CardContent>
     </Card>
   );
 }
