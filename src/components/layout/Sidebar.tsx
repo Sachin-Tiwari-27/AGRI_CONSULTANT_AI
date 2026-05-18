@@ -1,6 +1,7 @@
 "use client";
+
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -8,10 +9,14 @@ import {
   Settings,
   LogOut,
   Leaf,
-  ChevronRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const NAV = [
   {
@@ -24,6 +29,7 @@ const NAV = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+/* ── Sidebar ──────────────────────────────────────────────────────── */
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -35,84 +41,112 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 flex-shrink-0">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-100">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-green-800 rounded-lg flex items-center justify-center">
-            <Leaf className="w-4 h-4 text-white" />
+    <TooltipProvider delayDuration={300}>
+      <aside className="group/sidebar flex flex-col h-screen bg-card border-r border-border sticky top-0 flex-shrink-0 w-[60px] hover:w-[220px] transition-[width] duration-200 ease-in-out overflow-hidden z-20">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-3.5 py-4 border-b border-border min-h-[64px]">
+          <div className="w-8 h-8 bg-brand-800 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Leaf className="size-4 text-white" />
           </div>
-          <div>
-            <p className="text-sm font-bold text-green-900">AgriAI</p>
-            <p className="text-[10px] text-slate-500 leading-tight">
+          <div className="sidebar-item-label opacity-0 group-hover/sidebar:opacity-100 transition-opacity duration-150 delay-75">
+            <p className="text-sm font-bold text-brand-900 leading-none">
+              AgriAI
+            </p>
+            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
               Farm Intelligence
             </p>
           </div>
-        </Link>
-      </div>
+        </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon, exact }) => {
-          const active = exact ? pathname === href : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                active
-                  ? "bg-green-50 text-green-800 font-medium"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {label}
-              {active && (
-                <ChevronRight className="w-3 h-3 ml-auto opacity-50" />
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+        {/* Nav */}
+        <nav className="flex-1 flex flex-col gap-0.5 px-2 py-3 overflow-y-auto scrollbar-thin">
+          {NAV.map(({ href, label, icon: Icon, exact }) => {
+            const active = exact
+              ? pathname === href
+              : pathname.startsWith(href);
+            return (
+              <Tooltip key={href}>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm transition-colors duration-150 min-h-[36px]",
+                      active
+                        ? "bg-brand-50 text-brand-800 font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-4 flex-shrink-0" />
+                    <span className="sidebar-item-label opacity-0 group-hover/sidebar:opacity-100 transition-opacity duration-150 delay-75 whitespace-nowrap">
+                      {label}
+                    </span>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="right"
+                  className="group-hover/sidebar:hidden"
+                >
+                  {label}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </nav>
 
-      {/* Bottom */}
-      <div className="px-3 py-4 border-t border-slate-100">
-        <button
-          onClick={signOut}
-          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm text-slate-600 hover:bg-red-50 hover:text-red-700 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign out
-        </button>
-      </div>
-    </aside>
+        {/* Sign out */}
+        <div className="px-2 py-3 border-t border-border">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={signOut}
+                className="flex items-center gap-3 px-2.5 py-2 w-full rounded-lg text-sm text-muted-foreground hover:bg-red-50 hover:text-red-700 transition-colors duration-150"
+              >
+                <LogOut className="size-4 flex-shrink-0" />
+                <span className="sidebar-item-label opacity-0 group-hover/sidebar:opacity-100 transition-opacity duration-150 delay-75 whitespace-nowrap">
+                  Sign out
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="group-hover/sidebar:hidden">
+              Sign out
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </aside>
+    </TooltipProvider>
   );
 }
 
-// ── Top header bar ─────────────────────────────────────────────────────
-// FIX PR-2: sticky top-0 with z-10. Tab navigation inside ProjectWorkspace
-// must use sticky top-[73px] to avoid being hidden under this bar.
-// The 73px value matches this component's height: py-5 (20px × 2) + h1 (33px) = 73px.
-// We expose it as a CSS custom property so child components can reference it.
+/* ── TopBar ───────────────────────────────────────────────────────── */
+/**
+ * Sticky top bar — standardised at exactly 64px height.
+ * All content that needs to offset below this (e.g. sticky tab nav)
+ * should use `top-16` (64px).
+ */
 export function TopBar({
   title,
   children,
+  breadcrumb,
 }: {
   title: string;
   children?: React.ReactNode;
+  breadcrumb?: React.ReactNode;
 }) {
   return (
-    <div
-      className="flex items-center justify-between px-8 py-5 border-b border-slate-200 bg-white sticky top-0 z-10"
-      // Expose TopBar height for child offset calculations
-      style={{ "--topbar-height": "73px" } as React.CSSProperties}
-    >
-      {/* Title truncates to prevent overflow when project names are long */}
-      <h1 className="text-xl font-semibold text-slate-900 truncate mr-4 min-w-0">
-        {title}
-      </h1>
-      <div className="flex items-center gap-3 flex-shrink-0">{children}</div>
+    <div className="flex items-center justify-between px-6 h-16 border-b border-border bg-card sticky top-0 z-10 flex-shrink-0">
+      <div className="flex flex-col justify-center min-w-0 mr-4">
+        {breadcrumb && (
+          <div className="text-[11px] text-muted-foreground mb-0.5">
+            {breadcrumb}
+          </div>
+        )}
+        <h1 className="text-base font-semibold text-foreground truncate leading-tight">
+          {title}
+        </h1>
+      </div>
+      {children && (
+        <div className="flex items-center gap-2 flex-shrink-0">{children}</div>
+      )}
     </div>
   );
 }

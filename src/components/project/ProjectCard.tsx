@@ -4,67 +4,55 @@ import { formatDate } from "@/lib/utils";
 import { MapPin, Calendar, Wheat, ArrowRight } from "lucide-react";
 import type { Project } from "@/types";
 
-// Shows the first N crops then "+X more" to avoid overflow
-function CropPill({ crops }: { crops: string[] }) {
-  const MAX_SHOW = 3;
-  const shown = crops.slice(0, MAX_SHOW);
-  const extra = crops.length - MAX_SHOW;
-
-  return (
-    <span className="flex items-center gap-1 min-w-0">
-      <Wheat className="w-3 h-3 flex-shrink-0" />
-      <span className="truncate">
-        {shown.join(", ")}
-        {extra > 0 && (
-          <span className="text-slate-400 ml-1">+{extra} more</span>
-        )}
-      </span>
-    </span>
-  );
-}
-
 export function ProjectCard({ project }: { project: Project }) {
+  const crops = project.crop_types ?? [];
+
   return (
     <Link href={`/project/${project.id}`} className="block group">
-      <div className="bg-white rounded-xl border border-slate-200 hover:border-green-300 hover:shadow-md transition-all p-5">
+      <div className="rounded-xl border border-border bg-card hover:border-brand-300 hover:shadow-sm transition-all duration-150 p-5">
+        {/* Top row: title + badge */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="min-w-0 flex-1">
-            {/* Title truncates — prevents overflow when project names are very long */}
-            <h3 className="font-semibold text-slate-900 group-hover:text-green-800 transition-colors truncate">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground group-hover:text-brand-800 transition-colors truncate leading-snug">
               {project.title}
-            </h3>
-            <p className="text-sm text-slate-500 mt-0.5 truncate">
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
               {project.client_name}
             </p>
           </div>
-          {/* Badge is flex-shrink-0 so it never wraps under the title */}
-          <div className="flex-shrink-0">
-            <StatusBadge status={project.status} />
-          </div>
+          <StatusBadge status={project.status} />
         </div>
 
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
+        {/* Meta row */}
+        <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
           {project.region && (
-            <span className="flex items-center gap-1 min-w-0">
-              <MapPin className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate max-w-[140px]">
-                {project.region}, {project.country}
+            <span className="flex items-center gap-1 truncate max-w-[140px]">
+              <MapPin className="size-3 flex-shrink-0" />
+              <span className="truncate">
+                {project.region}
+                {project.country ? `, ${project.country}` : ""}
               </span>
             </span>
           )}
-          {project.crop_types?.length ? (
-            <span className="min-w-0 max-w-[200px]">
-              <CropPill crops={project.crop_types} />
+          {crops.length > 0 && (
+            <span className="flex items-center gap-1 truncate max-w-[160px]">
+              <Wheat className="size-3 flex-shrink-0" />
+              <span className="truncate">
+                {crops.slice(0, 2).join(", ")}
+                {crops.length > 2 && ` +${crops.length - 2}`}
+              </span>
             </span>
-          ) : null}
-          <span className="flex items-center gap-1 flex-shrink-0">
-            <Calendar className="w-3 h-3" />
+          )}
+          <span className="flex items-center gap-1 flex-shrink-0 ml-auto">
+            <Calendar className="size-3" />
             {formatDate(project.created_at)}
           </span>
         </div>
 
-        <div className="mt-3 flex items-center justify-end text-xs text-green-700 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-          Open project <ArrowRight className="w-3 h-3 ml-1" />
+        {/* Hover CTA */}
+        <div className="mt-3 flex items-center justify-end text-[11px] text-brand-700 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+          Open project
+          <ArrowRight className="size-3 ml-1" />
         </div>
       </div>
     </Link>
