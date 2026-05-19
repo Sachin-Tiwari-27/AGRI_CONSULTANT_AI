@@ -1,13 +1,18 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardFooter,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { EmptyState } from "@/components/ui/status";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Send,
   Zap,
@@ -18,70 +23,57 @@ import {
   ExternalLink,
   Trash2,
   ChevronDown,
-  Users,
-  DollarSign,
-  Wheat,
-  Zap as ZapIcon,
-  FileCheck,
-  MessageSquare,
   Eye,
   EyeOff,
   Clock,
   RefreshCw,
+  MoreHorizontal,
+  MessageSquare,
+  FileCheck,
+  Users,
+  Wheat,
+  DollarSign,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import type { AIFlag, Project, QuestionnaireSendLog } from "@/types";
 
-const QUESTION_LABELS: Record<string, string> = {
-  q1: "Legal Entity / Company Name",
-  q2: "Primary Contact Person",
+/* ── Question labels ─────────────────────────────────────────────── */
+const Q_LABELS: Record<string, string> = {
+  q1: "Legal Entity",
+  q2: "Primary Contact",
   q3: "Email / WhatsApp",
   q4: "GPS Coordinates",
-  q5: "Total Land Area (sqm)",
-  q6: "Primary Water Source",
-  q7: "Water Availability (litres/day)",
-  q8: "Water Analysis Available?",
-  q9: "Water Analysis Upload",
+  q5: "Land Area (sqm)",
+  q6: "Water Source",
+  q7: "Water Availability",
+  q8: "Water Analysis?",
+  q9: "Water Upload",
   q10: "Power Source",
-  q11: "Available Power Capacity (KVA)",
-  q12: "Internet Connectivity",
-  q13: "40ft Container Truck Access?",
+  q11: "Power Capacity (KVA)",
+  q12: "Internet",
+  q13: "40ft Truck Access?",
   q14: "Target Crops",
   q15: "Other Crops",
   q16: "Technology Level",
-  q17: "Agro-Tourism Planned?",
-  q18: "Primary Target Market",
-  q19: "On-Site Cold Storage?",
+  q17: "Agro-Tourism?",
+  q18: "Target Market",
+  q19: "Cold Storage?",
   q20: "Phase 1 Budget",
-  q21: "Construction Start Date",
-  q22: "Other Requirements",
+  q21: "Start Date",
+  q22: "Other Notes",
 };
 
 const ANSWER_SECTIONS = [
+  { title: "Site & Identity", keys: ["q1", "q2", "q3", "q4", "q5"] },
   {
-    title: "Client & Site Identity",
-    icon: Users,
-    keys: ["q1", "q2", "q3", "q4", "q5"],
-    color: "bg-blue-50 border-blue-100",
-  },
-  {
-    title: "Infrastructure & Utilities",
-    icon: ZapIcon,
+    title: "Infrastructure",
     keys: ["q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13"],
-    color: "bg-purple-50 border-purple-100",
   },
-  {
-    title: "Crops & Technology",
-    icon: Wheat,
-    keys: ["q14", "q15", "q16", "q17"],
-    color: "bg-green-50 border-green-100",
-  },
+  { title: "Crops & Technology", keys: ["q14", "q15", "q16", "q17"] },
   {
     title: "Commercial & Logistics",
-    icon: DollarSign,
     keys: ["q18", "q19", "q20", "q21", "q22"],
-    color: "bg-amber-50 border-amber-100",
   },
 ];
 
@@ -127,17 +119,16 @@ export function QuestionnaireTab({
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddGap, setShowAddGap] = useState(false);
+  const [activeSection, setActiveSection] = useState<"submissions" | "gaps">(
+    "submissions",
+  );
+  const [sendLog, setSendLog] = useState<QuestionnaireSendLog[]>([]);
   const [newGap, setNewGap] = useState({
     field_name: "",
     reason: "",
     suggested_question: "",
     severity: "recommended" as "required" | "recommended",
   });
-  const [activeSection, setActiveSection] = useState<"submissions" | "gaps">(
-    "submissions",
-  );
-  const [sendLog, setSendLog] = useState<QuestionnaireSendLog[]>([]);
-  const [loadingLog, setLoadingLog] = useState(false);
 
   const latestSubmission = submissions
     .filter((s) => s.submitted_at)
@@ -147,41 +138,29 @@ export function QuestionnaireTab({
         new Date(a.submitted_at!).getTime(),
     )[0];
 
-  const displaySubmissions = Object.values(
+  const byRound = Object.values(
     submissions.reduce(
-      (acc, sub) => {
-        acc[sub.round] = sub;
+      (acc, s) => {
+        acc[s.round] = s;
         return acc;
       },
       {} as Record<number, Submission>,
     ),
   ).sort((a, b) => b.round - a.round);
 
-  const pendingFlags = flags.filter((f) => f.status === "pending");
-  const acceptedFlags = flags.filter((f) => f.status === "accepted");
-  const dismissedFlags = flags.filter((f) => f.status === "dismissed");
-
-  const completionRate = latestSubmission
-    ? Math.round(
-        (Object.values(latestSubmission.answers).filter(
-          (v) => v !== "" && v !== null && v !== undefined,
-        ).length /
-          22) *
-          100,
-      )
-    : 0;
+  const pending = flags.filter((f) => f.status === "pending");
+  const accepted = flags.filter((f) => f.status === "accepted");
+  const dismissed = flags.filter((f) => f.status === "dismissed");
 
   useEffect(() => {
     if (!project.id) return;
-    setLoadingLog(true);
     fetch(`/api/projects/${project.id}/send-log`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setSendLog(Array.isArray(data) ? data : []))
-      .catch(() => setSendLog([]))
-      .finally(() => setLoadingLog(false));
+      .then((d) => setSendLog(Array.isArray(d) ? d : []))
+      .catch(() => setSendLog([]));
   }, [project.id]);
 
-  function getLogsForRound(round: number): QuestionnaireSendLog[] {
+  function logsFor(round: number) {
     return sendLog
       .filter((l) => l.round === round)
       .sort(
@@ -194,8 +173,8 @@ export function QuestionnaireTab({
       toast.error("Please fill in all fields");
       return;
     }
-    const success = await onAddFlag(newGap);
-    if (success) {
+    const ok = await onAddFlag(newGap);
+    if (ok) {
       setNewGap({
         field_name: "",
         reason: "",
@@ -207,134 +186,62 @@ export function QuestionnaireTab({
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header strip */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">
-            Questionnaire & Data Review
-          </h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Collect client data, identify gaps, and request clarifications.
-          </p>
+    <div className="max-w-4xl mx-auto space-y-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {submissions.length > 0 && (
+            <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+              {(["submissions", "gaps"] as const).map((id) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveSection(id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                    activeSection === id
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {id === "submissions" ? "Submissions" : "Gaps"}
+                  {id === "gaps" && pending.length > 0 && (
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-semibold text-white">
+                      {pending.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSendQuestionnaire}
-            loading={loading === "send_q"}
-          >
-            <Send className="w-3.5 h-3.5" />
-            {submissions.length > 0 ? "Resend / New Round" : "Send Form"}
-          </Button>
+
+        <div className="flex items-center gap-2">
           {latestSubmission && (
             <Button
               size="sm"
-              variant="secondary"
+              variant="outline"
               onClick={onRunClarify}
               loading={loading === "clarify"}
             >
-              <Zap className="w-3.5 h-3.5" /> AI Gap Check
+              <Zap className="size-3.5" /> Gap check
             </Button>
           )}
+          <Button
+            size="sm"
+            onClick={onSendQuestionnaire}
+            loading={loading === "send_q"}
+          >
+            <Send className="size-3.5" />
+            {submissions.length > 0 ? "Resend" : "Send form"}
+          </Button>
         </div>
       </div>
 
-      {/* Stats row */}
-      {submissions.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            {
-              label: "Submissions",
-              value: submissions.length,
-              icon: FileCheck,
-              color: "bg-blue-50 text-blue-700",
-            },
-            {
-              label: "Completion",
-              value: latestSubmission ? `${completionRate}%` : "—",
-              icon: CheckCircle2,
-              color: "bg-green-50 text-green-700",
-            },
-            {
-              label: "Gaps Pending",
-              value: pendingFlags.length,
-              icon: AlertTriangle,
-              color:
-                pendingFlags.length > 0
-                  ? "bg-amber-50 text-amber-700"
-                  : "bg-slate-50 text-slate-500",
-            },
-            {
-              label: "Accepted Gaps",
-              value: acceptedFlags.length,
-              icon: MessageSquare,
-              color:
-                acceptedFlags.length > 0
-                  ? "bg-purple-50 text-purple-700"
-                  : "bg-slate-50 text-slate-500",
-            },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div
-              key={label}
-              className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3"
-            >
-              <div
-                className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}
-              >
-                <Icon className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-lg font-bold text-slate-900 leading-none">
-                  {value}
-                </p>
-                <p className="text-xs text-slate-500 mt-0.5 truncate">
-                  {label}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Sub-tabs */}
-      {submissions.length > 0 && (
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-          {[
-            { id: "submissions" as const, label: "Submissions" },
-            {
-              id: "gaps" as const,
-              label: "Data Gaps",
-              badge: pendingFlags.length || undefined,
-            },
-          ].map(({ id, label, badge }) => (
-            <button
-              key={id}
-              onClick={() => setActiveSection(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                activeSection === id
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {label}
-              {badge ? (
-                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center flex-shrink-0">
-                  {badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Submissions section ── */}
+      {/* ── Submissions ──────────────────────────────────────────── */}
       {(activeSection === "submissions" || submissions.length === 0) && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {submissions.length === 0 ? (
             <EmptyState
-              icon={<Send className="w-10 h-10 text-slate-300" />}
+              icon={<Send className="size-8" />}
               title="No questionnaire sent yet"
               description="Send the initial form to start collecting project inputs from the client."
               action={
@@ -342,17 +249,16 @@ export function QuestionnaireTab({
                   onClick={onSendQuestionnaire}
                   loading={loading === "send_q"}
                 >
-                  <Send className="w-4 h-4" /> Send Questionnaire
+                  <Send className="size-4" /> Send Questionnaire
                 </Button>
               }
             />
           ) : (
-            displaySubmissions.map((sub) => (
+            byRound.map((sub) => (
               <SubmissionCard
                 key={sub.id}
                 submission={sub}
-                sendLogs={getLogsForRound(sub.round)}
-                loadingLog={loadingLog}
+                logs={logsFor(sub.round)}
                 expanded={expandedId === sub.id}
                 onToggle={() =>
                   setExpandedId(expandedId === sub.id ? null : sub.id)
@@ -363,83 +269,66 @@ export function QuestionnaireTab({
         </div>
       )}
 
-      {/* ── Gaps section ── */}
+      {/* ── Gaps ─────────────────────────────────────────────────── */}
       {activeSection === "gaps" && submissions.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <p className="text-sm text-slate-600">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
               {flags.length === 0
-                ? "No gaps flagged yet. Run the AI gap check or add one manually."
-                : `${pendingFlags.length} pending · ${acceptedFlags.length} accepted · ${dismissedFlags.length} dismissed`}
+                ? "No gaps flagged yet."
+                : `${pending.length} pending · ${accepted.length} accepted · ${dismissed.length} dismissed`}
             </p>
             <Button
               size="sm"
               variant="outline"
               onClick={() => setShowAddGap((v) => !v)}
             >
-              <Plus className="w-3.5 h-3.5" /> Add Custom Gap
+              <Plus className="size-3.5" /> Add gap
             </Button>
           </div>
 
+          {/* Add gap form */}
           {showAddGap && (
-            <Card className="border-dashed border-amber-300 bg-amber-50/20">
-              <CardHeader>
+            <Card>
+              <CardContent className="pt-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-800">
-                    Add Custom Data Gap
-                  </p>
+                  <p className="text-xs font-semibold">Add custom data gap</p>
                   <button onClick={() => setShowAddGap(false)}>
-                    <X className="w-4 h-4 text-slate-400" />
+                    <X className="size-3.5 text-muted-foreground hover:text-foreground" />
                   </button>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">
-                    Field / Topic *
-                  </label>
-                  <input
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    placeholder="e.g. Water TDS/EC reading"
-                    value={newGap.field_name}
-                    onChange={(e) =>
-                      setNewGap((g) => ({ ...g, field_name: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">
-                    Why is this needed? *
-                  </label>
-                  <textarea
-                    rows={2}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                    placeholder="Explain why this information is critical..."
-                    value={newGap.reason}
-                    onChange={(e) =>
-                      setNewGap((g) => ({ ...g, reason: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600 block mb-1">
-                    Question to ask client *
-                  </label>
-                  <textarea
-                    rows={2}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                    placeholder="Could you please provide..."
-                    value={newGap.suggested_question}
-                    onChange={(e) =>
-                      setNewGap((g) => ({
-                        ...g,
-                        suggested_question: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex gap-2">
+                <input
+                  className="w-full h-8 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Field / topic *"
+                  value={newGap.field_name}
+                  onChange={(e) =>
+                    setNewGap((g) => ({ ...g, field_name: e.target.value }))
+                  }
+                />
+                <textarea
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  placeholder="Why is this needed? *"
+                  value={newGap.reason}
+                  onChange={(e) =>
+                    setNewGap((g) => ({ ...g, reason: e.target.value }))
+                  }
+                />
+                <textarea
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  placeholder="Question to ask client *"
+                  value={newGap.suggested_question}
+                  onChange={(e) =>
+                    setNewGap((g) => ({
+                      ...g,
+                      suggested_question: e.target.value,
+                    }))
+                  }
+                />
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
                     {(["required", "recommended"] as const).map((sev) => (
                       <button
                         key={sev}
@@ -447,15 +336,15 @@ export function QuestionnaireTab({
                         onClick={() =>
                           setNewGap((g) => ({ ...g, severity: sev }))
                         }
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
                           newGap.severity === sev
                             ? sev === "required"
-                              ? "bg-red-100 border-red-400 text-red-700"
-                              : "bg-amber-100 border-amber-400 text-amber-700"
-                            : "bg-white border-slate-300 text-slate-500 hover:border-slate-400"
+                              ? "bg-red-50 border-red-300 text-red-700"
+                              : "bg-amber-50 border-amber-300 text-amber-700"
+                            : "bg-muted border-border text-muted-foreground"
                         }`}
                       >
-                        {sev === "required" ? "🔴 Required" : "🟡 Recommended"}
+                        {sev === "required" ? "Required" : "Recommended"}
                       </button>
                     ))}
                   </div>
@@ -472,7 +361,7 @@ export function QuestionnaireTab({
                       onClick={submitGap}
                       loading={loading === "add_gap"}
                     >
-                      <Plus className="w-3.5 h-3.5" /> Add Gap
+                      <Plus className="size-3.5" /> Add
                     </Button>
                   </div>
                 </div>
@@ -480,74 +369,69 @@ export function QuestionnaireTab({
             </Card>
           )}
 
-          {pendingFlags.length > 0 && (
+          {/* Pending flags */}
+          {pending.length > 0 && (
             <div className="space-y-2">
-              <SectionLabel color="amber">
-                Pending Review ({pendingFlags.length})
-              </SectionLabel>
-              {pendingFlags.map((flag) => (
-                <FlagCard
-                  key={flag.id}
-                  flag={flag}
+              <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">
+                Pending review ({pending.length})
+              </p>
+              {pending.map((f) => (
+                <FlagRow
+                  key={f.id}
+                  flag={f}
                   loading={loading}
-                  onAccept={() => onAcceptFlag(flag.id)}
-                  onDismiss={() => onDismissFlag(flag.id)}
-                  onDelete={() => onDeleteFlag(flag.id)}
+                  onAccept={() => onAcceptFlag(f.id)}
+                  onDismiss={() => onDismissFlag(f.id)}
+                  onDelete={() => onDeleteFlag(f.id)}
                 />
               ))}
             </div>
           )}
 
-          {acceptedFlags.length > 0 && (
+          {/* Accepted flags */}
+          {accepted.length > 0 && (
             <div className="space-y-2">
-              <SectionLabel color="purple">
-                Accepted — To Send ({acceptedFlags.length})
-              </SectionLabel>
-              {acceptedFlags.map((flag) => (
-                <FlagCard
-                  key={flag.id}
-                  flag={flag}
+              <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">
+                Accepted — to send ({accepted.length})
+              </p>
+              {accepted.map((f) => (
+                <FlagRow
+                  key={f.id}
+                  flag={f}
                   loading={loading}
-                  onDelete={() => onDeleteFlag(flag.id)}
+                  onDelete={() => onDeleteFlag(f.id)}
                 />
               ))}
-              <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between gap-4 flex-wrap">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-purple-900">
-                    {acceptedFlags.length} question
-                    {acceptedFlags.length > 1 ? "s" : ""} ready to send
-                  </p>
-                  <p className="text-xs text-purple-700 mt-0.5 truncate">
-                    Send a follow-up email to {project.client_email} with all
-                    accepted questions.
-                  </p>
-                </div>
+              <div className="flex items-center justify-between rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+                <p className="text-xs text-brand-800 font-medium">
+                  {accepted.length} question{accepted.length !== 1 ? "s" : ""}{" "}
+                  ready to send to {project.client_email}
+                </p>
                 <Button
                   size="sm"
                   onClick={onSendFollowUp}
                   loading={loading === "followup"}
-                  disabled={loading === "followup"}
-                  className="flex-shrink-0"
                 >
-                  <Send className="w-3.5 h-3.5" /> Send Follow-up
+                  <Send className="size-3.5" /> Send follow-up
                 </Button>
               </div>
             </div>
           )}
 
-          {dismissedFlags.length > 0 && (
-            <details className="cursor-pointer">
-              <summary className="text-xs font-semibold text-slate-400 uppercase tracking-wide py-1 list-none flex items-center gap-2">
-                <ChevronDown className="w-3.5 h-3.5" /> Dismissed (
-                {dismissedFlags.length})
+          {/* Dismissed (collapsed) */}
+          {dismissed.length > 0 && (
+            <details>
+              <summary className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer list-none flex items-center gap-1.5 py-1">
+                <ChevronDown className="size-3.5" />
+                Dismissed ({dismissed.length})
               </summary>
               <div className="space-y-2 mt-2">
-                {dismissedFlags.map((flag) => (
-                  <FlagCard
-                    key={flag.id}
-                    flag={flag}
+                {dismissed.map((f) => (
+                  <FlagRow
+                    key={f.id}
+                    flag={f}
                     loading={loading}
-                    onDelete={() => onDeleteFlag(flag.id)}
+                    onDelete={() => onDeleteFlag(f.id)}
                     faded
                   />
                 ))}
@@ -557,22 +441,18 @@ export function QuestionnaireTab({
 
           {flags.length === 0 && !showAddGap && (
             <EmptyState
-              icon={<AlertTriangle className="w-10 h-10 text-slate-200" />}
-              title="No gaps flagged yet"
-              description={
-                latestSubmission
-                  ? "Run the AI gap check to automatically detect missing or insufficient data."
-                  : "Send the questionnaire first, then run the gap check."
-              }
+              icon={<Zap className="size-8" />}
+              title="No gaps flagged"
+              description="Run the AI gap check to automatically detect missing or insufficient data."
               action={
                 latestSubmission ? (
                   <Button
                     size="sm"
-                    variant="secondary"
+                    variant="outline"
                     onClick={onRunClarify}
                     loading={loading === "clarify"}
                   >
-                    <Zap className="w-3.5 h-3.5" /> Run AI Gap Check
+                    <Zap className="size-3.5" /> Run AI Gap Check
                   </Button>
                 ) : undefined
               }
@@ -584,190 +464,138 @@ export function QuestionnaireTab({
   );
 }
 
-// ── Submission card ───────────────────────────────────────────────────
+/* ── Submission card ─────────────────────────────────────────────── */
 function SubmissionCard({
   submission,
-  sendLogs,
-  loadingLog,
+  logs,
   expanded,
   onToggle,
 }: {
   submission: Submission;
-  sendLogs: QuestionnaireSendLog[];
-  loadingLog: boolean;
+  logs: QuestionnaireSendLog[];
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const [showSendHistory, setShowSendHistory] = useState(false);
   const answerCount = Object.keys(submission.answers || {}).length;
-  const latestSend = sendLogs[0];
+  const latestLog = logs[0];
 
   return (
-    <Card className={submission.submitted_at ? "border-green-200" : ""}>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-sm text-slate-900">
-              {submission.round === 1
-                ? "Initial Questionnaire"
-                : `Follow-up Round ${submission.round}`}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {submission.submitted_at
-                ? `Submitted ${formatDate(submission.submitted_at)} · ${answerCount} answers`
-                : "Awaiting response from client"}
-            </p>
-            {latestSend && (
-              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1 flex-wrap">
-                <Clock className="w-3 h-3 flex-shrink-0" />
-                {latestSend.is_resend ? "Resent" : "Sent"}{" "}
-                {formatDate(latestSend.sent_at)} at{" "}
-                {new Date(latestSend.sent_at).toLocaleTimeString("en-GB", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {sendLogs.length > 1 && (
-                  <button
-                    onClick={() => setShowSendHistory((s) => !s)}
-                    className="ml-1 text-slate-400 hover:text-slate-600 underline underline-offset-2 whitespace-nowrap"
-                  >
-                    +{sendLogs.length - 1} more
-                  </button>
-                )}
+    <Card>
+      <CardContent className="py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm font-semibold text-foreground">
+                {submission.round === 1
+                  ? "Initial questionnaire"
+                  : `Follow-up round ${submission.round}`}
               </p>
-            )}
-            {loadingLog && !latestSend && (
-              <p className="text-xs text-slate-300 mt-0.5">
-                Loading send history…
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Badge variant={submission.submitted_at ? "green" : "amber"}>
-              {submission.submitted_at ? "Submitted" : "Pending"}
-            </Badge>
-            {submission.submitted_at && answerCount > 0 && (
-              <button
-                onClick={onToggle}
-                className="flex items-center gap-1 text-xs text-green-700 hover:text-green-800 font-medium px-2 py-1 rounded-lg hover:bg-green-50 transition-colors whitespace-nowrap"
-              >
-                {expanded ? (
-                  <EyeOff className="w-3 h-3" />
-                ) : (
-                  <Eye className="w-3 h-3" />
-                )}
-                {expanded ? "Hide" : "View"}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {showSendHistory && sendLogs.length > 1 && (
-          <div className="mt-2 border-t border-slate-100 pt-2 space-y-1">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Send history
-            </p>
-            {sendLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-center gap-2 text-xs text-slate-500 flex-wrap"
-              >
-                <RefreshCw className="w-3 h-3 flex-shrink-0" />
-                <span>{log.is_resend ? "Resent" : "Sent"}</span>
-                <span className="font-medium text-slate-700">
-                  {formatDate(log.sent_at)}
-                </span>
+              <Badge variant={submission.submitted_at ? "green" : "amber"}>
+                {submission.submitted_at ? "Submitted" : "Pending"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+              {submission.submitted_at && (
                 <span>
-                  at{" "}
-                  {new Date(log.sent_at).toLocaleTimeString("en-GB", {
+                  Submitted {formatDate(submission.submitted_at)} ·{" "}
+                  {answerCount} answers
+                </span>
+              )}
+              {latestLog && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {latestLog.is_resend ? "Resent" : "Sent"}{" "}
+                  {formatDate(latestLog.sent_at)}
+                  {" at "}
+                  {new Date(latestLog.sent_at).toLocaleTimeString("en-GB", {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
+                  {logs.length > 1 && ` · +${logs.length - 1} more`}
                 </span>
-                <span className="text-slate-400 truncate">
-                  → {log.recipient}
-                </span>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-        )}
-      </CardHeader>
 
-      {expanded && submission.answers && (
-        <CardContent className="border-t border-slate-100 bg-slate-50/30 p-0">
-          {ANSWER_SECTIONS.map((section) => {
-            const answers = section.keys
-              .filter(
-                (k) =>
-                  submission.answers[k] !== undefined &&
-                  submission.answers[k] !== "",
-              )
-              .map((k) => ({
-                key: k,
-                label: QUESTION_LABELS[k] || k,
-                value: submission.answers[k],
-              }));
-            if (!answers.length) return null;
-            const Icon = section.icon;
-            return (
-              <div
-                key={section.title}
-                className="border-b border-slate-100 last:border-0"
-              >
-                <div
-                  className={`flex items-center gap-2 px-6 py-2.5 border-b border-slate-100 ${section.color}`}
-                >
-                  <Icon className="w-3.5 h-3.5 text-slate-500" />
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {submission.submitted_at && answerCount > 0 && (
+              <Button size="sm" variant="ghost" onClick={onToggle}>
+                {expanded ? (
+                  <EyeOff className="size-3.5" />
+                ) : (
+                  <Eye className="size-3.5" />
+                )}
+                {expanded ? "Hide" : "View"}
+              </Button>
+            )}
+            <a
+              href={`/q/${submission.token}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="size-3" />
+              Portal
+            </a>
+          </div>
+        </div>
+
+        {/* Answer table */}
+        {expanded && submission.answers && (
+          <div className="mt-4 border-t border-border pt-4 space-y-4">
+            {ANSWER_SECTIONS.map((section) => {
+              const rows = section.keys
+                .filter(
+                  (k) =>
+                    submission.answers[k] !== undefined &&
+                    submission.answers[k] !== "",
+                )
+                .map((k) => ({
+                  label: Q_LABELS[k] || k,
+                  value: submission.answers[k],
+                }));
+              if (!rows.length) return null;
+              return (
+                <div key={section.title}>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                     {section.title}
                   </p>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    {rows.map(({ label, value }, i) => (
+                      <div
+                        key={label}
+                        className={`grid grid-cols-5 gap-4 px-3 py-2 text-xs ${i !== 0 ? "border-t border-border/50" : ""}`}
+                      >
+                        <span className="col-span-2 text-muted-foreground font-medium truncate">
+                          {label}
+                        </span>
+                        <span className="col-span-3 text-foreground break-words">
+                          {formatAnswer(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="px-6 py-2">
-                  {answers.map(({ key, label, value }) => (
-                    <div
-                      key={key}
-                      className="grid grid-cols-5 gap-4 py-2 border-b border-slate-50 last:border-0"
-                    >
-                      <span className="col-span-2 text-xs font-medium text-slate-500 pt-0.5 truncate">
-                        {label}
-                      </span>
-                      <span className="col-span-3 text-sm text-slate-800 font-medium break-words">
-                        {Array.isArray(value)
-                          ? (value as string[]).join(", ")
-                          : value === true
-                            ? "✓ Yes"
-                            : value === false
-                              ? "✗ No"
-                              : typeof value === "object" && value !== null
-                                ? `[File: ${(value as any).filename ?? "uploaded"}]`
-                                : String(value ?? "—")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      )}
-
-      <CardFooter>
-        <a
-          href={`/q/${submission.token}`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-green-700 hover:underline flex items-center gap-1"
-        >
-          <ExternalLink className="w-3 h-3" /> View client portal
-        </a>
-      </CardFooter>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
 
-// ── Flag card ─────────────────────────────────────────────────────────
-// PR-4: Badge row now uses flex-wrap with consistent gap — no orphaned pills
-function FlagCard({
+function formatAnswer(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return (value as string[]).join(", ");
+  if (typeof value === "object" && (value as any).filename)
+    return `[File: ${(value as any).filename}]`;
+  return String(value);
+}
+
+/* ── Flag row ────────────────────────────────────────────────────── */
+function FlagRow({
   flag,
   loading,
   onAccept,
@@ -785,13 +613,12 @@ function FlagCard({
   const isLoading = loading === `flag_${flag.id}`;
   return (
     <div
-      className={`bg-white rounded-xl border border-slate-200 p-4 transition-opacity ${faded ? "opacity-50" : ""}`}
+      className={`rounded-lg border border-border bg-card px-4 py-3 transition-opacity ${faded ? "opacity-40" : ""}`}
     >
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {/* PR-4: Badge row uses flex-wrap + gap-1.5 — no mid-badge line breaks */}
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded whitespace-nowrap">
+            <span className="text-xs font-semibold text-foreground bg-muted px-1.5 py-0.5 rounded">
               {flag.field_name}
             </span>
             <Badge variant={flag.severity === "required" ? "red" : "amber"}>
@@ -803,31 +630,27 @@ function FlagCard({
               </Badge>
             )}
             <span
-              className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap ${
-                flag.is_manual ? "text-slate-400" : "text-purple-500"
-              }`}
+              className={`text-[10px] font-medium ${flag.is_manual ? "text-muted-foreground" : "text-purple-500"}`}
             >
-              <span
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${flag.is_manual ? "bg-slate-300" : "bg-purple-400"}`}
-              />
-              {flag.is_manual ? "Consultant" : "AI-detected"}
+              {flag.is_manual ? "Manual" : "AI"}
             </span>
           </div>
-          <p className="text-sm text-slate-700 leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {flag.reason}
           </p>
           <div className="mt-1.5 flex items-start gap-1.5">
-            <MessageSquare className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-slate-500 italic">
+            <MessageSquare className="size-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-[11px] text-muted-foreground italic">
               "{flag.suggested_question}"
             </p>
           </div>
         </div>
-        <div className="flex gap-1.5 flex-shrink-0">
+
+        <div className="flex items-center gap-1 flex-shrink-0">
           {flag.status === "pending" && onAccept && (
             <Button
               size="sm"
-              variant="secondary"
+              variant="outline"
               onClick={onAccept}
               loading={isLoading}
               disabled={isLoading}
@@ -835,72 +658,23 @@ function FlagCard({
               Accept
             </Button>
           )}
-          {flag.status === "pending" && onDismiss && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onDismiss}
-              loading={isLoading}
-              disabled={isLoading}
-            >
-              Dismiss
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={onDelete}
-            loading={isLoading}
-            disabled={isLoading}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon-sm" variant="ghost" disabled={isLoading}>
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {flag.status === "pending" && onDismiss && (
+                <DropdownMenuItem onClick={onDismiss}>Dismiss</DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onDelete} destructive>
+                <Trash2 className="size-3.5" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SectionLabel({
-  children,
-  color,
-}: {
-  children: React.ReactNode;
-  color: "amber" | "purple" | "gray";
-}) {
-  const colors = {
-    amber: "text-amber-700",
-    purple: "text-purple-700",
-    gray: "text-slate-400",
-  };
-  return (
-    <p
-      className={`text-xs font-semibold uppercase tracking-wide ${colors[color]}`}
-    >
-      {children}
-    </p>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
-      <div className="flex justify-center mb-3">{icon}</div>
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      <p className="text-xs text-slate-500 mt-1 mb-4 max-w-sm mx-auto">
-        {description}
-      </p>
-      {action}
     </div>
   );
 }
