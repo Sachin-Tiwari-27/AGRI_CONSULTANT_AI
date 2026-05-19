@@ -78,6 +78,8 @@ export interface Project {
   meet_recording_url?: string;
   currency?: string;
   report_published_at?: string;
+  market_research?: string | null;
+  climate_data?: string | null;
   created_at: string;
   updated_at: string;
 }

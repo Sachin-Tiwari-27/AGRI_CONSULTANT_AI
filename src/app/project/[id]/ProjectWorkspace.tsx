@@ -653,6 +653,7 @@ export function ProjectWorkspace({
             currency={currency}
             onGenerateReport={() => generateReport()}
             loadingReport={loading === "report"}
+            onDataLoaded={(patch) => patchProject(patch as any)}
           />
         )}
         {activeTab === "financial" && (

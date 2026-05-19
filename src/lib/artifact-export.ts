@@ -606,3 +606,166 @@ export function exportFinancialModelDocx(
     'application/msword',
   )
 }
+
+export function exportAllArtifactsDocx(
+  projectTitle: string,
+  clientName: string,
+  clientEmail: string,
+  currencyCode: string,
+  submissions: any[],
+  callBrief: any,
+  consultantNotesProject: string | null,
+  consultantNotesResearch: any[],
+  marketResearch: string | null,
+  climateData: string | null,
+  model: FinancialModel | null,
+  financialModelNotes: string | null,
+) {
+  let body = `
+    <h1>${esc(projectTitle)} — Full Project Data</h1>
+    <p class="meta">Client: ${esc(clientName)} (${esc(clientEmail)}) &nbsp;|&nbsp; Exported: ${new Date().toLocaleString('en-GB')}</p>
+    <hr class="divider"/>
+  `
+
+  if (submissions && submissions.length > 0) {
+    body += `<h1>Questionnaire Data</h1>`
+    for (const sub of submissions) {
+      body += `<h2>Round ${sub.round} — ${sub.submitted_at ? 'Submitted ' + formatDate(sub.submitted_at) : 'Pending'}</h2>`
+      body += `<table><thead><tr><th style="width:40%">Question</th><th>Answer</th></tr></thead><tbody>`
+      for (const [key, val] of Object.entries(sub.answers || {})) {
+        const label = QUESTION_LABELS[key] || key
+        body += `<tr><td class="label">${esc(label)}</td><td>${sanitize(val, 'html')}</td></tr>`
+      }
+      body += `</tbody></table>`
+    }
+    body += `<hr class="divider"/>`
+  }
+
+  if (callBrief || consultantNotesProject) {
+    body += `<h1>Call Notes &amp; Brief</h1>`
+    if (consultantNotesProject) {
+      body += `<h2>Consultant Call Notes</h2>`
+      body += `<p>${esc(consultantNotesProject).replace(/\\n/g, '<br/>')}</p>`
+    }
+    if (callBrief) {
+      body += `<h2>AI-Extracted Call Brief</h2>`
+      body += `<table><tbody>`
+      const fields: [string, unknown][] = [
+        ['Budget Range', callBrief.budget_range],
+        ['Crops Mentioned', callBrief.crop_types],
+        ['Experience Level', callBrief.experience_level],
+        ['Agro-Tourism Interest', callBrief.agro_tourism_interest],
+        ['Water Source', callBrief.water_source_mentioned],
+        ['Power Source', callBrief.power_source_mentioned],
+        ['Funding Status', callBrief.funding_status],
+      ]
+      for (const [label, val] of fields) {
+        if (val !== undefined && val !== null && val !== '') {
+          body += `<tr><td class="label" style="width:35%">${esc(label)}</td><td>${sanitize(val, 'html')}</td></tr>`
+        }
+      }
+      body += `</tbody></table>`
+      if (callBrief.key_concerns?.length) {
+        body += `<h3>Key Concerns</h3><ul>`
+        for (const c of callBrief.key_concerns) body += `<li>${esc(c)}</li>`
+        body += `</ul>`
+      }
+    }
+    body += `<hr class="divider"/>`
+  }
+
+  if (consultantNotesResearch.length > 0 || marketResearch || climateData) {
+    body += `<h1>Research Data</h1>`
+    if (consultantNotesResearch.length) {
+      body += `<h2>Consultant Research Notes</h2>`
+      for (const note of consultantNotesResearch) {
+        body += `<h3>[${esc(note.category.toUpperCase())}] ${esc(note.title)}</h3>`
+        body += `<p class="meta">Added: ${formatDate(note.created_at)}</p>`
+        body += `<p>${esc(note.content).replace(/\\n/g, '<br/>')}</p>`
+      }
+    }
+    if (marketResearch) {
+      body += `<h2>Market Research</h2>`
+      const converted = esc(marketResearch)
+        .replace(/^#{1,6}\\s(.+)$/gm, '<h3>$1</h3>')
+        .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+        .replace(/\\n\\n/g, '</p><p>')
+        .replace(/\\n/g, '<br/>')
+      body += `<p>${converted}</p>`
+    }
+    if (climateData) {
+      body += `<h2>Climate Data</h2>`
+      const rows = climateData.split('\\n').filter(r => r.includes('|') && !r.includes('---'))
+      if (rows.length > 1) {
+        body += `<table><thead>`
+        const headers = rows[0].split('|').map(c => c.trim()).filter(Boolean)
+        body += `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>`
+        for (const row of rows.slice(1)) {
+          const cells = row.split('|').map(c => c.trim()).filter(Boolean)
+          body += `<tr>${cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`
+        }
+        body += `</tbody></table>`
+      } else {
+        body += `<pre>${esc(climateData)}</pre>`
+      }
+    }
+    body += `<hr class="divider"/>`
+  }
+
+  if (model) {
+    body += `<h1>Financial Model</h1>`
+    body += `<h2>Capital Investment</h2>`
+    body += `<table><thead><tr><th>Item</th><th>Amount (${esc(currencyCode)})</th></tr></thead><tbody>`
+    body += `<tr><td>CAPEX</td><td>${currency(model.capex_total, currencyCode)}</td></tr>`
+    body += `<tr><td>Pre-startup cost</td><td>${currency(model.pre_startup_cost, currencyCode)}</td></tr>`
+    body += `<tr><td><strong>Total Investment</strong></td><td><strong>${currency(model.capex_total + model.pre_startup_cost, currencyCode)}</strong></td></tr>`
+    body += `</tbody></table>`
+    
+    body += `<h2>Crop Revenue Projections</h2>`
+    body += `<table><thead><tr><th>Crop</th><th>Area (sqm)</th><th>Yield (t/yr)</th><th>Price/kg</th><th>Annual Revenue</th></tr></thead><tbody>`
+    for (const crop of model.crops) {
+      body += `<tr>
+        <td>${esc(crop.name)}</td>
+        <td>${crop.area_sqm.toLocaleString()}</td>
+        <td>${crop.yield_tonnes}</td>
+        <td>${esc(currencyCode)} ${crop.price_per_kg}</td>
+        <td>${currency(crop.annual_revenue, currencyCode)}</td>
+      </tr>`
+    }
+    if ((model.agro_tourism_revenue ?? 0) > 0) {
+      body += `<tr><td colspan="4"><em>Agro-tourism revenue</em></td><td>${currency(model.agro_tourism_revenue!, currencyCode)}</td></tr>`
+    }
+    body += `<tr><td colspan="4"><strong>Total Annual Revenue</strong></td><td><strong>${currency(model.total_annual_revenue, currencyCode)}</strong></td></tr>`
+    body += `</tbody></table>`
+
+    body += `<h2>Profitability Summary</h2>`
+    body += `<table><tbody>`
+    const summary: [string, string][] = [
+      ['Total Annual Revenue', currency(model.total_annual_revenue, currencyCode)],
+      ['Growing costs / yr', currency(model.growing_cost_annual, currencyCode)],
+      ['Manpower / yr', currency(model.manpower_cost_annual, currencyCode)],
+      ['EBITDA', `${currency(model.ebitda, currencyCode)} (${model.ebitda_margin}%)`],
+      ['Payback Period', `${model.payback_years} years`],
+    ]
+    for (const [label, val] of summary) {
+      body += `<tr><td class="label" style="width:45%">${esc(label)}</td><td>${val}</td></tr>`
+    }
+    body += `</tbody></table>`
+
+    if (model.assumptions?.length) {
+      body += `<h2>Assumptions</h2><ul>`
+      for (const a of model.assumptions) body += `<li>${esc(a)}</li>`
+      body += `</ul>`
+    }
+
+    if (financialModelNotes) {
+      body += `<h2>Consultant Notes</h2><p>${esc(financialModelNotes).replace(/\\n/g, '<br/>')}</p>`
+    }
+  }
+
+  downloadBlob(
+    wrapWordHtml(body, `${projectTitle} — Full Data Export`),
+    `${projectTitle}-full-export.doc`,
+    'application/msword',
+  )
+}
