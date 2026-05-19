@@ -645,7 +645,7 @@ export function exportAllArtifactsDocx(
     body += `<h1>Call Notes &amp; Brief</h1>`
     if (consultantNotesProject) {
       body += `<h2>Consultant Call Notes</h2>`
-      body += `<p>${esc(consultantNotesProject).replace(/\\n/g, '<br/>')}</p>`
+      body += `<p>${esc(consultantNotesProject).replace(/\n/g, '<br/>')}</p>`
     }
     if (callBrief) {
       body += `<h2>AI-Extracted Call Brief</h2>`
@@ -681,21 +681,21 @@ export function exportAllArtifactsDocx(
       for (const note of consultantNotesResearch) {
         body += `<h3>[${esc(note.category.toUpperCase())}] ${esc(note.title)}</h3>`
         body += `<p class="meta">Added: ${formatDate(note.created_at)}</p>`
-        body += `<p>${esc(note.content).replace(/\\n/g, '<br/>')}</p>`
+        body += `<p>${esc(note.content).replace(/\n/g, '<br/>')}</p>`
       }
     }
     if (marketResearch) {
       body += `<h2>Market Research</h2>`
       const converted = esc(marketResearch)
-        .replace(/^#{1,6}\\s(.+)$/gm, '<h3>$1</h3>')
-        .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
-        .replace(/\\n\\n/g, '</p><p>')
-        .replace(/\\n/g, '<br/>')
+        .replace(/^#{1,6}\s(.+)$/gm, '<h3>$1</h3>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br/>')
       body += `<p>${converted}</p>`
     }
     if (climateData) {
       body += `<h2>Climate Data</h2>`
-      const rows = climateData.split('\\n').filter(r => r.includes('|') && !r.includes('---'))
+      const rows = climateData.split('\n').filter(r => r.includes('|') && !r.includes('---'))
       if (rows.length > 1) {
         body += `<table><thead>`
         const headers = rows[0].split('|').map(c => c.trim()).filter(Boolean)
@@ -759,7 +759,7 @@ export function exportAllArtifactsDocx(
     }
 
     if (financialModelNotes) {
-      body += `<h2>Consultant Notes</h2><p>${esc(financialModelNotes).replace(/\\n/g, '<br/>')}</p>`
+      body += `<h2>Consultant Notes</h2><p>${esc(financialModelNotes).replace(/\n/g, '<br/>')}</p>`
     }
   }
 

@@ -285,7 +285,7 @@ export function ArtifactsTab({ projectId }: { projectId: string }) {
       currency,
       submittedRounds,
       call_brief,
-      project.consultant_notes,
+      project.consultant_notes ?? null,
       consultant_notes,
       market_research,
       climate_data,
