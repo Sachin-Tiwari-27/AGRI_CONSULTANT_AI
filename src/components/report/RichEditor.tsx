@@ -269,13 +269,13 @@ export function RichEditor({
   return (
     <div
       className={cn(
-        "border border-border rounded-xl overflow-hidden bg-card",
+        "border border-border rounded-xl bg-card relative",
         className,
       )}
     >
       {/* ── Toolbar ───────────────────────────────────────────────── */}
       {!readOnly && (
-        <div className="flex items-center gap-0.5 px-3 py-2 border-b border-border bg-muted/40 flex-wrap">
+        <div className="sticky top-[109px] z-10 flex items-center gap-0.5 px-3 py-2 border-b border-border bg-muted/90 backdrop-blur flex-wrap rounded-t-xl">
           {/* History */}
           <ToolBtn
             title="Undo"

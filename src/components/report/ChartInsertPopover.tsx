@@ -111,16 +111,16 @@ export function ChartInsertPopover({ onInsert, onClose }: Props) {
   }
 
   return (
-    <div className="w-[360px] rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+    <div className="w-[360px] max-h-[72vh] flex flex-col rounded-xl border border-border bg-card shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border bg-muted/30">
+      <div className="px-4 py-3 border-b border-border bg-muted/30 flex-shrink-0">
         <p className="text-xs font-semibold text-foreground">Insert chart</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">
           Choose a type or start from a preset
         </p>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 overflow-y-auto flex-1">
         {/* Chart type selector */}
         <div>
           <p className="text-[10px] font-medium text-muted-foreground mb-1.5">
