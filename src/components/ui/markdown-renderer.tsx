@@ -75,6 +75,12 @@ function parseMarkdown(md: string): string {
   try {
     let html = marked.parse(md) as string;
 
+    // DEBUG
+    if (md.includes("chart-node") || md.includes('data-type="chart"')) {
+      console.log("[MarkdownRenderer] INPUT contains chart reference. md snippet:", md.substring(Math.max(0, md.indexOf("chart")-10), md.indexOf("chart")+80));
+      console.log("[MarkdownRenderer] AFTER marked.parse, html snippet:", html.substring(Math.max(0, html.indexOf("chart")-10), html.indexOf("chart")+80));
+    }
+
     // Render placeholder blocks
     html = html.replace(
       /⬡ PLACEHOLDER: (.*?)(?=<|\n|$)/g,
@@ -82,6 +88,57 @@ function parseMarkdown(md: string): string {
         <span class="text-amber-500">⬡</span>
         <span>PLACEHOLDER: $1</span>
       </div>`,
+    );
+
+    // Render chart-node tokens as data tables
+    // <!-- chart-node:{json} --> may be wrapped in an HTML comment tag by marked
+    html = html.replace(
+      /<!--\s*chart-node:([\s\S]*?)\s*-->/g,
+      (_match, json) => {
+        try {
+          const attrs = JSON.parse(json) as {
+            chartType: string;
+            title: string;
+            data: string;
+            currency: string;
+          };
+          const data: Array<{ label: string; value: number }> = JSON.parse(
+            attrs.data || "[]",
+          );
+          const fmt = (v: number) =>
+            attrs.currency
+              ? `${attrs.currency} ${v.toLocaleString()}`
+              : v.toLocaleString();
+
+          const rows = data
+            .map(
+              (d) =>
+                `<tr>
+                  <td style="padding:6px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${d.label}</td>
+                  <td style="padding:6px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#111827;font-weight:600;text-align:right;font-variant-numeric:tabular-nums">${fmt(d.value)}</td>
+                </tr>`,
+            )
+            .join("");
+
+          return `<div style="margin:16px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+              <span style="font-size:13px;font-weight:600;color:#1a1a1a">${attrs.title || "Chart"}</span>
+              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;background:#e2e8f0;border-radius:4px;padding:2px 7px">${attrs.chartType || "bar"}</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#f1f5f9">
+                  <th style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;text-align:left">Label</th>
+                  <th style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;text-align:right">Value</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+        } catch {
+          return ""; // malformed token — drop silently
+        }
+      },
     );
 
     return html;

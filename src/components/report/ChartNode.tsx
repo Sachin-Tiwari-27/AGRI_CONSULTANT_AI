@@ -414,10 +414,30 @@ export const ChartNode = Node.create({
 
   addAttributes() {
     return {
-      chartType: { default: "bar" },
-      title: { default: "" },
-      data: { default: "[]" },
-      currency: { default: "" },
+      chartType: {
+        default: "bar",
+        parseHTML: (el) =>
+          el.getAttribute("data-chart-type") ?? "bar",
+        renderHTML: (attrs) => ({ "data-chart-type": attrs.chartType }),
+      },
+      title: {
+        default: "",
+        parseHTML: (el) =>
+          el.getAttribute("data-title") ?? "",
+        renderHTML: (attrs) => ({ "data-title": attrs.title }),
+      },
+      data: {
+        default: "[]",
+        parseHTML: (el) =>
+          el.getAttribute("data-data") ?? "[]",
+        renderHTML: (attrs) => ({ "data-data": attrs.data }),
+      },
+      currency: {
+        default: "",
+        parseHTML: (el) =>
+          el.getAttribute("data-currency") ?? "",
+        renderHTML: (attrs) => ({ "data-currency": attrs.currency }),
+      },
     };
   },
 
@@ -426,16 +446,9 @@ export const ChartNode = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "div",
-      mergeAttributes(HTMLAttributes, {
-        "data-type": "chart",
-        "data-chart-type": HTMLAttributes.chartType,
-        "data-title": HTMLAttributes.title,
-        "data-data": HTMLAttributes.data,
-        "data-currency": HTMLAttributes.currency,
-      }),
-    ];
+    // Per-attribute renderHTML handlers above already produced data-* names.
+    // Just merge them with data-type so the div is identifiable.
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "chart" })];
   },
 
   addNodeView() {

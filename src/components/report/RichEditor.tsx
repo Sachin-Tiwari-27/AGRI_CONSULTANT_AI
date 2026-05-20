@@ -171,6 +171,10 @@ export function RichEditor({
     onChangeFn.current = onChange;
   }, [onChange]);
 
+  // Track the last markdown we emitted so the sync effect can skip our own
+  // round-trip changes (prevents chart/placeholder nodes from being reset).
+  const lastEmittedMd = useRef(content);
+
   const editor = useEditor(
     {
       immediatelyRender: false,
@@ -189,7 +193,9 @@ export function RichEditor({
       ],
       content: markdownToHtml(content),
       onUpdate: ({ editor }) => {
-        onChangeFn.current(htmlToMarkdown(editor.getHTML()));
+        const md = htmlToMarkdown(editor.getHTML());
+        lastEmittedMd.current = md; // stamp before calling onChange
+        onChangeFn.current(md);
       },
       onSelectionUpdate: () => forceUpdate(),
       editorProps: {
@@ -209,14 +215,18 @@ export function RichEditor({
     [],
   );
 
-  /* Sync content when prop changes */
-  const prevContent = useRef(content);
+  /**
+   * Sync content from outside only when the prop has changed externally
+   * (e.g. AI regeneration, section switch). We track the last markdown value
+   * we emitted ourselves in `lastEmittedMd`. If the incoming `content` prop
+   * matches that, it came from our own onChange — skip the reset so custom
+   * nodes (ChartNode, PlaceholderNode) are never wiped mid-edit.
+   */
   useEffect(() => {
-    if (!editor || content === prevContent.current) return;
-    prevContent.current = content;
-    const html = markdownToHtml(content);
-    if (editor.getHTML() !== html)
-      editor.commands.setContent(html, { emitUpdate: false });
+    if (!editor) return;
+    if (content === lastEmittedMd.current) return; // our own change — skip
+    lastEmittedMd.current = content;
+    editor.commands.setContent(markdownToHtml(content), { emitUpdate: false });
   }, [content, editor]);
 
   const insertPlaceholder = useCallback(

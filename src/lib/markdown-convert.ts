@@ -9,7 +9,7 @@
  *
  */
 
-import { marked, Renderer } from "marked";
+import { marked } from "marked";
 import TurndownService from "turndown";
 // @ts-ignore
 import { gfm } from "turndown-plugin-gfm";
@@ -28,13 +28,42 @@ export function markdownToHtml(markdown: string): string {
   try {
     // marked.parse returns string when not using async
     let html = marked.parse(markdown) as string;
-    
+
     // Restore placeholder nodes from markdown text
     html = html.replace(
       /<p>⬡ PLACEHOLDER: (.*?)<\/p>/g,
-      '<div data-type="placeholder" data-label="$1"></div>'
+      '<div data-type="placeholder" data-label="$1"></div>',
     );
-    
+
+    // Restore chart nodes from serialised comment tokens
+    // (kept for backward-compat with content saved before this version)
+    html = html.replace(
+      /<!--\s*chart-node:([\s\S]*?)\s*-->/g,
+      (_match, json) => {
+        try {
+          const attrs = JSON.parse(json) as {
+            chartType: string;
+            title: string;
+            data: string;
+            currency: string;
+          };
+          // Encode the data value for a double-quoted HTML attribute
+          const safeData = (attrs.data || "[]")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;");
+          return (
+            `<div data-type="chart"` +
+            ` data-chart-type="${attrs.chartType || "bar"}"` +
+            ` data-title="${(attrs.title || "").replace(/"/g, "&quot;")}"` +
+            ` data-data="${safeData}"` +
+            ` data-currency="${(attrs.currency || "").replace(/"/g, "&quot;")}"></div>`
+          );
+        } catch {
+          return ""; // malformed token — drop silently
+        }
+      },
+    );
+
     return html;
   } catch (err) {
     console.error("[markdown-convert] markdownToHtml failed:", err);
@@ -61,7 +90,7 @@ turndown.addRule("tableWrapper", {
   },
 });
 
-// Placeholder blocks → custom markdown syntax [[PLACEHOLDER: label]]
+// Placeholder blocks → custom markdown syntax ⬡ PLACEHOLDER: label
 turndown.addRule("placeholder", {
   filter: (node: HTMLElement) =>
     node.nodeName === "DIV" && node.getAttribute("data-type") === "placeholder",
@@ -71,10 +100,64 @@ turndown.addRule("placeholder", {
   },
 });
 
+// ── Decode HTML entities in an attribute value string ─────────────────
+function decodeAttr(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+/**
+ * Chart nodes are Tiptap `atom` nodes — they are always empty `<div>`s.
+ * Turndown's `blankRule` fires for empty elements BEFORE any custom rule,
+ * so we must extract chart divs from the HTML ourselves before Turndown
+ * sees them.  We replace each one with a `<p>CHART_PLACEHOLDER_N</p>` tag
+ * that Turndown converts to a plain-text paragraph, then swap the placeholder
+ * text back to our `<!-- chart-node:{json} -->` token in the markdown output.
+ */
 export function htmlToMarkdown(html: string): string {
   if (!html || !html.trim()) return "";
   try {
-    return turndown.turndown(html);
+    // ── 1. Pre-extract chart divs ────────────────────────────────────
+    const placeholders = new Map<string, string>(); // placeholder → JSON
+    let idx = 0;
+
+    const preprocessed = html.replace(
+      /<div\b([^>]*?)data-type=["']chart["']([^>]*?)(?:\/>|><\/div>)/gi,
+      (_match, before, after) => {
+        const allAttrs = before + " " + after;
+        const get = (name: string) =>
+          decodeAttr(
+            (allAttrs.match(new RegExp(`${name}=["']([^"']*)["']`)) ||
+              [])[1] || "",
+          );
+
+        const attrs = JSON.stringify({
+          chartType: get("data-chart-type") || "bar",
+          title: get("data-title"),
+          data: get("data-data") || "[]",
+          currency: get("data-currency"),
+        });
+
+        const key = `CHART_PLACEHOLDER_${idx++}`;
+        placeholders.set(key, attrs);
+        // Wrap in <p> so Turndown treats it as a text paragraph, not blank
+        return `<p>${key}</p>`;
+      },
+    );
+
+    // ── 2. Run Turndown normally ─────────────────────────────────────
+    let md = turndown.turndown(preprocessed);
+
+    // ── 3. Swap placeholders back to chart-node comment tokens ───────
+    placeholders.forEach((json, key) => {
+      md = md.replace(key, `\n\n<!-- chart-node:${json} -->\n\n`);
+    });
+
+    return md;
   } catch (err) {
     console.error("[markdown-convert] htmlToMarkdown failed:", err);
     return html.replace(/<[^>]*>/g, "");
