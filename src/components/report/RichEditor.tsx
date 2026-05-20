@@ -1,4 +1,5 @@
 "use client";
+
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -23,43 +24,41 @@ import {
   Minus,
   Undo,
   Redo,
-  AlignLeft,
   Code,
   Quote,
-  Columns,
   AlertTriangle,
+  BarChart2,
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { ChartNode, insertChart } from "./ChartNode";
+import { ChartInsertPopover } from "./ChartInsertPopover";
+import type { ChartType, ChartDataPoint } from "./ChartNode";
 
-// ── Custom Placeholder Node ────────────────────────────────────────────
-// Renders ⬡ PLACEHOLDER blocks that the consultant fills in manually.
+/* ── Custom Placeholder Node (unchanged) ─────────────────────────── */
 const PlaceholderNode = Node.create({
   name: "reportPlaceholder",
   group: "block",
   atom: true,
   draggable: true,
-
   addAttributes() {
     return {
       label: {
         default: "Content",
-        parseHTML: (element) => element.getAttribute("data-label"),
-        renderHTML: (attributes) => ({ "data-label": attributes.label }),
+        parseHTML: (el) => el.getAttribute("data-label"),
+        renderHTML: (a) => ({ "data-label": a.label }),
       },
       hint: {
         default: "",
-        parseHTML: (element) => element.getAttribute("data-hint"),
-        renderHTML: (attributes) => ({ "data-hint": attributes.hint }),
+        parseHTML: (el) => el.getAttribute("data-hint"),
+        renderHTML: (a) => ({ "data-hint": a.hint }),
       },
     };
   },
-
   parseHTML() {
     return [{ tag: 'div[data-type="placeholder"]' }];
   },
-
   renderHTML({ HTMLAttributes }) {
     return [
       "div",
@@ -70,41 +69,19 @@ const PlaceholderNode = Node.create({
       `⬡ PLACEHOLDER: ${HTMLAttributes["data-label"] || "Content"}`,
     ];
   },
-
   addNodeView() {
-    return ({ node, getPos, editor }) => {
+    return ({ node }) => {
       const dom = document.createElement("div");
       dom.setAttribute("data-type", "placeholder");
-      dom.className = [
-        "my-4 px-4 py-3 rounded-xl border-2 border-dashed border-amber-300",
-        "bg-amber-50 text-amber-800 text-sm font-medium",
-        "flex items-center gap-2 cursor-pointer select-none",
-        "hover:border-amber-400 hover:bg-amber-100 transition-colors",
-      ].join(" ");
-
-      const icon = document.createElement("span");
-      icon.textContent = "⬡";
-      icon.className = "text-amber-500 text-base";
-
-      const label = document.createElement("span");
-      label.textContent = `PLACEHOLDER: ${node.attrs.label}`;
-
-      const hint = document.createElement("span");
-      hint.textContent = node.attrs.hint
-        ? ` — ${node.attrs.hint}`
-        : " — Click to edit or upload content here";
-      hint.className = "text-amber-600 font-normal text-xs ml-1";
-
-      dom.appendChild(icon);
-      dom.appendChild(label);
-      dom.appendChild(hint);
-
+      dom.className =
+        "my-3 flex items-center gap-2 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 cursor-pointer hover:border-amber-400 transition-colors";
+      dom.innerHTML = `<span class="text-amber-500">⬡</span><span>PLACEHOLDER: ${node.attrs.label}</span><span class="text-amber-600 font-normal text-xs ml-1">${node.attrs.hint ? `— ${node.attrs.hint}` : "— Click to edit"}</span>`;
       return { dom };
     };
   },
 });
 
-// ── Toolbar button ─────────────────────────────────────────────────────
+/* ── Toolbar button ──────────────────────────────────────────────── */
 function ToolBtn({
   onClick,
   active = false,
@@ -127,13 +104,13 @@ function ToolBtn({
       }}
       disabled={disabled}
       title={title}
-      className={[
-        "p-1.5 rounded text-sm transition-colors",
+      className={cn(
+        "p-1.5 rounded-md text-sm transition-colors",
         active
-          ? "bg-slate-900 text-white"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
         disabled ? "opacity-30 cursor-not-allowed" : "",
-      ].join(" ")}
+      )}
     >
       {children}
     </button>
@@ -141,10 +118,10 @@ function ToolBtn({
 }
 
 function ToolDivider() {
-  return <div className="w-px h-5 bg-slate-200 mx-1" />;
+  return <div className="w-px h-4 bg-border mx-0.5" />;
 }
 
-// ── Image upload handler ───────────────────────────────────────────────
+/* ── Image upload ────────────────────────────────────────────────── */
 async function uploadImage(
   file: File,
   projectId: string,
@@ -152,27 +129,24 @@ async function uploadImage(
   const supabase = createClient();
   const ext = file.name.split(".").pop() || "jpg";
   const path = `${projectId}/report-images/${Date.now()}.${ext}`;
-
   const { error } = await supabase.storage
     .from("uploads")
     .upload(path, file, { contentType: file.type, upsert: false });
-
   if (error) {
     console.error("[RichEditor] Image upload failed:", error);
     return null;
   }
-
   const {
     data: { publicUrl },
   } = supabase.storage.from("uploads").getPublicUrl(path);
   return publicUrl;
 }
 
-// ── Main component ─────────────────────────────────────────────────────
+/* ── Main RichEditor ─────────────────────────────────────────────── */
 interface Props {
-  content: string; // stored as Markdown
+  content: string;
   onChange: (markdown: string) => void;
-  projectId?: string; // needed for image uploads
+  projectId?: string;
   placeholder?: string;
   readOnly?: boolean;
   className?: string;
@@ -188,8 +162,10 @@ export function RichEditor({
 }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [tick, setTick] = useState(0);
-  const forceUpdate = useCallback(() => setTick(t => t + 1), []);
-  
+  const forceUpdate = useCallback(() => setTick((t) => t + 1), []);
+  const [showChartPopover, setShowChartPopover] = useState(false);
+  const chartBtnRef = useRef<HTMLButtonElement>(null);
+
   const onChangeFn = useRef(onChange);
   useEffect(() => {
     onChangeFn.current = onChange;
@@ -200,9 +176,7 @@ export function RichEditor({
       immediatelyRender: false,
       editable: !readOnly,
       extensions: [
-        StarterKit.configure({
-          heading: { levels: [1, 2, 3] },
-        }),
+        StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
         Table.configure({ resizable: true }),
         TableRow,
         TableHeader,
@@ -211,49 +185,38 @@ export function RichEditor({
         Placeholder.configure({ placeholder }),
         CharacterCount,
         PlaceholderNode,
+        ChartNode, // ← new
       ],
       content: markdownToHtml(content),
       onUpdate: ({ editor }) => {
-        const html = editor.getHTML();
-        onChangeFn.current(htmlToMarkdown(html));
+        onChangeFn.current(htmlToMarkdown(editor.getHTML()));
       },
-      onSelectionUpdate: () => {
-        // This forces the React component to re-render when the selection changes
-        // so that isActive("table") checks in the toolbar/footer are accurate.
-        forceUpdate();
-      },
+      onSelectionUpdate: () => forceUpdate(),
       editorProps: {
         attributes: {
-          class: [
+          class: cn(
             "prose prose-sm max-w-none focus:outline-none min-h-[400px] px-6 py-5",
-            "text-slate-800 leading-relaxed",
-            // Table styles inside editor
+            "text-foreground leading-relaxed tiptap-editor",
             "[&_table]:w-full [&_table]:border-collapse [&_table]:my-3",
-            "[&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold",
-            "[&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2",
-            // Placeholder node styles injected via addNodeView above
-            "[&_.placeholder-block]:my-3",
-            // Image
+            "[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold",
+            "[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2",
             "[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3",
-            // Blockquote
-            "[&_blockquote]:border-l-4 [&_blockquote]:border-green-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-600",
-          ].join(" "),
+            "[&_blockquote]:border-l-4 [&_blockquote]:border-brand-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground",
+          ),
         },
       },
     },
     [],
-  ); // empty dep array — editor is stable, content updates handled below
+  );
 
-  // Sync content when prop changes externally (e.g. section switches)
+  /* Sync content when prop changes */
   const prevContent = useRef(content);
   useEffect(() => {
     if (!editor || content === prevContent.current) return;
     prevContent.current = content;
     const html = markdownToHtml(content);
-    // Only update if editor doesn't already have this content
-    if (editor.getHTML() !== html) {
+    if (editor.getHTML() !== html)
       editor.commands.setContent(html, { emitUpdate: false });
-    }
   }, [content, editor]);
 
   const insertPlaceholder = useCallback(
@@ -261,11 +224,22 @@ export function RichEditor({
       editor
         ?.chain()
         .focus()
-        .insertContent({
-          type: "reportPlaceholder",
-          attrs: { label, hint },
-        })
+        .insertContent({ type: "reportPlaceholder", attrs: { label, hint } })
         .run();
+    },
+    [editor],
+  );
+
+  const handleChartInsert = useCallback(
+    (
+      type: ChartType,
+      title: string,
+      data: ChartDataPoint[],
+      currency: string,
+    ) => {
+      if (!editor) return;
+      insertChart(editor, type, title, data, currency);
+      setShowChartPopover(false);
     },
     [editor],
   );
@@ -284,8 +258,8 @@ export function RichEditor({
 
   if (!editor)
     return (
-      <div className="border border-slate-200 rounded-xl min-h-[400px] flex items-center justify-center">
-        <div className="w-4 h-4 border-2 border-slate-300 border-t-green-500 rounded-full animate-spin" />
+      <div className="border border-border rounded-xl min-h-[400px] flex items-center justify-center bg-card">
+        <div className="size-4 border-2 border-muted border-t-brand-500 rounded-full animate-spin" />
       </div>
     );
 
@@ -294,25 +268,28 @@ export function RichEditor({
 
   return (
     <div
-      className={`border border-slate-200 rounded-xl overflow-hidden bg-white ${className}`}
+      className={cn(
+        "border border-border rounded-xl overflow-hidden bg-card",
+        className,
+      )}
     >
-      {/* ── Toolbar ── */}
+      {/* ── Toolbar ───────────────────────────────────────────────── */}
       {!readOnly && (
-        <div className="flex items-center gap-0.5 px-3 py-2 border-b border-slate-100 bg-slate-50 flex-wrap">
+        <div className="flex items-center gap-0.5 px-3 py-2 border-b border-border bg-muted/40 flex-wrap">
           {/* History */}
           <ToolBtn
-            title="Undo (⌘Z)"
+            title="Undo"
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
           >
-            <Undo className="w-3.5 h-3.5" />
+            <Undo className="size-3.5" />
           </ToolBtn>
           <ToolBtn
-            title="Redo (⌘⇧Z)"
+            title="Redo"
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
           >
-            <Redo className="w-3.5 h-3.5" />
+            <Redo className="size-3.5" />
           </ToolBtn>
 
           <ToolDivider />
@@ -325,7 +302,7 @@ export function RichEditor({
               editor.chain().focus().toggleHeading({ level: 1 }).run()
             }
           >
-            <Heading1 className="w-3.5 h-3.5" />
+            <Heading1 className="size-3.5" />
           </ToolBtn>
           <ToolBtn
             title="Heading 2"
@@ -334,7 +311,7 @@ export function RichEditor({
               editor.chain().focus().toggleHeading({ level: 2 }).run()
             }
           >
-            <Heading2 className="w-3.5 h-3.5" />
+            <Heading2 className="size-3.5" />
           </ToolBtn>
           <ToolBtn
             title="Heading 3"
@@ -343,39 +320,39 @@ export function RichEditor({
               editor.chain().focus().toggleHeading({ level: 3 }).run()
             }
           >
-            <Heading3 className="w-3.5 h-3.5" />
+            <Heading3 className="size-3.5" />
           </ToolBtn>
 
           <ToolDivider />
 
-          {/* Inline formatting */}
+          {/* Inline */}
           <ToolBtn
-            title="Bold (⌘B)"
+            title="Bold"
             active={editor.isActive("bold")}
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
-            <Bold className="w-3.5 h-3.5" />
+            <Bold className="size-3.5" />
           </ToolBtn>
           <ToolBtn
-            title="Italic (⌘I)"
+            title="Italic"
             active={editor.isActive("italic")}
             onClick={() => editor.chain().focus().toggleItalic().run()}
           >
-            <Italic className="w-3.5 h-3.5" />
+            <Italic className="size-3.5" />
           </ToolBtn>
           <ToolBtn
-            title="Inline code"
+            title="Code"
             active={editor.isActive("code")}
             onClick={() => editor.chain().focus().toggleCode().run()}
           >
-            <Code className="w-3.5 h-3.5" />
+            <Code className="size-3.5" />
           </ToolBtn>
           <ToolBtn
             title="Blockquote"
             active={editor.isActive("blockquote")}
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
           >
-            <Quote className="w-3.5 h-3.5" />
+            <Quote className="size-3.5" />
           </ToolBtn>
 
           <ToolDivider />
@@ -386,14 +363,14 @@ export function RichEditor({
             active={editor.isActive("bulletList")}
             onClick={() => editor.chain().focus().toggleBulletList().run()}
           >
-            <List className="w-3.5 h-3.5" />
+            <List className="size-3.5" />
           </ToolBtn>
           <ToolBtn
             title="Numbered list"
             active={editor.isActive("orderedList")}
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
           >
-            <ListOrdered className="w-3.5 h-3.5" />
+            <ListOrdered className="size-3.5" />
           </ToolBtn>
 
           <ToolDivider />
@@ -401,68 +378,65 @@ export function RichEditor({
           {/* Table */}
           <div className="relative group">
             <ToolBtn
-              title="Table actions"
+              title="Table"
               active={editor.isActive("table")}
               onClick={() => {}}
             >
-              <TableIcon className="w-3.5 h-3.5" />
+              <TableIcon className="size-3.5" />
             </ToolBtn>
-            
-            {/* Hover bridge to prevent dropdown from disappearing */}
-            <div className="absolute top-full left-0 w-full h-2 z-50 hidden group-hover:block" />
-
-            {editor.isActive("table") ? (
-              <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 w-48 hidden group-hover:block animate-in fade-in zoom-in duration-100">
-                {[
-                  {
-                    label: "Add Row Above",
-                    fn: () => editor.chain().focus().addRowBefore().run(),
-                  },
-                  {
-                    label: "Add Row Below",
-                    fn: () => editor.chain().focus().addRowAfter().run(),
-                  },
-                  {
-                    label: "Add Column Left",
-                    fn: () => editor.chain().focus().addColumnBefore().run(),
-                  },
-                  {
-                    label: "Add Column Right",
-                    fn: () => editor.chain().focus().addColumnAfter().run(),
-                  },
-                  { type: "divider" },
-                  {
-                    label: "Delete Row",
-                    fn: () => editor.chain().focus().deleteRow().run(),
-                  },
-                  {
-                    label: "Delete Column",
-                    fn: () => editor.chain().focus().deleteColumn().run(),
-                  },
-                  {
-                    label: "Delete Table",
-                    fn: () => editor.chain().focus().deleteTable().run(),
-                  },
-                ].map((item, idx) =>
-                  item.type === "divider" ? (
-                    <div key={idx} className="h-px bg-slate-100 my-1" />
-                  ) : (
-                    <button
-                      key={idx}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        (item as any).fn();
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      {(item as any).label}
-                    </button>
-                  )
-                )}
-              </div>
-            ) : (
-              <div className="absolute top-full left-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 w-48 hidden group-hover:block animate-in fade-in zoom-in duration-100">
+            <div className="absolute top-full left-0 w-2 h-2 z-50 hidden group-hover:block" />
+            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-lg py-1 z-50 w-44 hidden group-hover:block">
+              {editor.isActive("table") ? (
+                <>
+                  {[
+                    [
+                      "Add row above",
+                      () => editor.chain().focus().addRowBefore().run(),
+                    ],
+                    [
+                      "Add row below",
+                      () => editor.chain().focus().addRowAfter().run(),
+                    ],
+                    [
+                      "Add column left",
+                      () => editor.chain().focus().addColumnBefore().run(),
+                    ],
+                    [
+                      "Add column right",
+                      () => editor.chain().focus().addColumnAfter().run(),
+                    ],
+                    ["—"],
+                    [
+                      "Delete row",
+                      () => editor.chain().focus().deleteRow().run(),
+                    ],
+                    [
+                      "Delete column",
+                      () => editor.chain().focus().deleteColumn().run(),
+                    ],
+                    [
+                      "Delete table",
+                      () => editor.chain().focus().deleteTable().run(),
+                    ],
+                  ].map((item, i) =>
+                    item[0] === "—" ? (
+                      <div key={i} className="h-px bg-border my-1" />
+                    ) : (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          (item[1] as () => void)();
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
+                      >
+                        {item[0] as string}
+                      </button>
+                    ),
+                  )}
+                </>
+              ) : (
                 <button
                   type="button"
                   onMouseDown={(e) => {
@@ -473,12 +447,12 @@ export function RichEditor({
                       .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
                       .run();
                   }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
                 >
-                  Insert Table (3x3)
+                  Insert 3×3 table
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Image */}
@@ -486,7 +460,7 @@ export function RichEditor({
             title="Insert image"
             onClick={() => imageInputRef.current?.click()}
           >
-            <ImageIcon className="w-3.5 h-3.5" />
+            <ImageIcon className="size-3.5" />
           </ToolBtn>
           <input
             ref={imageInputRef}
@@ -494,64 +468,84 @@ export function RichEditor({
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
             onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (file) await handleImageUpload(file);
+              const f = e.target.files?.[0];
+              if (f) await handleImageUpload(f);
               e.target.value = "";
             }}
           />
 
-          {/* Horizontal rule */}
+          {/* Divider */}
           <ToolBtn
             title="Horizontal rule"
             onClick={() => editor.chain().focus().setHorizontalRule().run()}
           >
-            <Minus className="w-3.5 h-3.5" />
+            <Minus className="size-3.5" />
           </ToolBtn>
 
           <ToolDivider />
 
-          {/* Placeholder insert */}
+          {/* ── Chart insert ── */}
+          <div className="relative">
+            <button
+              ref={chartBtnRef}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setShowChartPopover((v) => !v);
+              }}
+              title="Insert chart"
+              className={cn(
+                "p-1.5 rounded-md text-sm transition-colors flex items-center gap-1",
+                showChartPopover
+                  ? "bg-brand-800 text-white"
+                  : "text-brand-700 hover:bg-brand-50 hover:text-brand-800",
+              )}
+            >
+              <BarChart2 className="size-3.5" />
+              <span className="text-[11px] font-medium hidden sm:inline">
+                Chart
+              </span>
+            </button>
+            {showChartPopover && (
+              <>
+                {/* Backdrop */}
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowChartPopover(false)}
+                />
+                <div className="absolute top-full left-0 mt-1.5 z-50">
+                  <ChartInsertPopover
+                    onInsert={handleChartInsert}
+                    onClose={() => setShowChartPopover(false)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Placeholder */}
           <div className="relative group">
-            <ToolBtn title="Insert placeholder block" onClick={() => {}}>
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            <ToolBtn title="Insert placeholder" onClick={() => {}}>
+              <AlertTriangle className="size-3.5 text-amber-500" />
             </ToolBtn>
-            {/* Dropdown on hover */}
-            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 w-64 hidden group-hover:block">
-              <p className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-lg py-1 z-50 w-56 hidden group-hover:block">
+              <p className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                 Insert placeholder
               </p>
               {[
-                {
-                  label: "Site Photo / Rendering",
-                  hint: "Upload a site photo or farm rendering",
-                },
-                {
-                  label: "Greenhouse Layout Plan",
-                  hint: "Upload site plan or CAD drawing",
-                },
-                {
-                  label: "Financial Chart / Graph",
-                  hint: "Upload ROI or cash flow chart",
-                },
-                { label: "Gantt Chart", hint: "Upload project timeline" },
-                {
-                  label: "Equipment Supplier Quotes",
-                  hint: "Attach supplier quotations",
-                },
-                {
-                  label: "Water Quality Report",
-                  hint: "Upload lab EC/TDS/pH report",
-                },
-                {
-                  label: "Staffing Plan",
-                  hint: "Add detailed role and salary breakdown",
-                },
-                {
-                  label: "Marketing Budget",
-                  hint: "Add quarterly marketing spend plan",
-                },
-                { label: "Custom", hint: "" },
-              ].map(({ label, hint }) => (
+                [
+                  "Site Photo / Rendering",
+                  "Upload site photo or farm rendering",
+                ],
+                ["Greenhouse Layout Plan", "Upload site plan or CAD drawing"],
+                ["Financial Chart / Graph", "Upload ROI or cash flow chart"],
+                ["Gantt Chart", "Upload project timeline"],
+                ["Equipment Supplier Quotes", "Attach supplier quotations"],
+                ["Water Quality Report", "Upload lab EC/TDS/pH report"],
+                ["Staffing Plan", "Add detailed role and salary breakdown"],
+                ["Marketing Budget", "Add quarterly marketing spend plan"],
+                ["Custom", ""],
+              ].map(([label, hint]) => (
                 <button
                   key={label}
                   type="button"
@@ -559,7 +553,7 @@ export function RichEditor({
                     e.preventDefault();
                     insertPlaceholder(label, hint);
                   }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-amber-50 hover:text-amber-800 transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-amber-50 hover:text-amber-800 transition-colors"
                 >
                   ⬡ {label}
                 </button>
@@ -567,60 +561,44 @@ export function RichEditor({
             </div>
           </div>
 
-          {/* Word/char count */}
-          <div className="ml-auto text-[10px] text-slate-400 pr-1 hidden sm:block">
+          {/* Word count */}
+          <div className="ml-auto text-[10px] text-muted-foreground hidden sm:block pr-1">
             {wordCount} words · {charCount} chars
           </div>
         </div>
       )}
 
-      {/* ── Editor content area ── */}
+      {/* Editor content */}
       <EditorContent editor={editor} />
 
-      {/* ── Table controls (shown when cursor is in a table) ── */}
-      {!readOnly && (editor.isActive("table") || editor.isActive("tableCell") || editor.isActive("tableHeader") || editor.can().deleteTable()) && (
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-amber-100 bg-amber-50/50 text-[11px] flex-wrap">
-          <span className="text-amber-700 font-bold uppercase tracking-wider text-[9px] mr-2 flex items-center gap-1">
-            <TableIcon className="w-3 h-3" /> Table Active:
+      {/* Table context bar */}
+      {!readOnly && editor.isActive("table") && (
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-amber-100 bg-amber-50/50 text-[11px] flex-wrap">
+          <span className="text-amber-700 font-bold text-[9px] uppercase tracking-wider mr-1 flex items-center gap-1">
+            <TableIcon className="size-3" /> Table:
           </span>
           {[
-            {
-              label: "+ Row",
-              fn: () => editor.chain().focus().addRowAfter().run(),
-            },
-            {
-              label: "+ Col",
-              fn: () => editor.chain().focus().addColumnAfter().run(),
-            },
-            {
-              label: "- Row",
-              fn: () => editor.chain().focus().deleteRow().run(),
-            },
-            {
-              label: "- Col",
-              fn: () => editor.chain().focus().deleteColumn().run(),
-            },
-            {
-              label: "Delete",
-              fn: () => editor.chain().focus().deleteTable().run(),
-              danger: true,
-            },
-          ].map(({ label, fn, danger }) => (
+            ["+Row", () => editor.chain().focus().addRowAfter().run()],
+            ["+Col", () => editor.chain().focus().addColumnAfter().run()],
+            ["−Row", () => editor.chain().focus().deleteRow().run()],
+            ["−Col", () => editor.chain().focus().deleteColumn().run()],
+            ["Delete", () => editor.chain().focus().deleteTable().run(), true],
+          ].map(([label, fn, danger]) => (
             <button
-              key={label}
+              key={String(label)}
               type="button"
               onMouseDown={(e) => {
                 e.preventDefault();
-                fn();
+                (fn as () => void)();
               }}
               className={cn(
-                "px-2.5 py-1 rounded-md border shadow-sm transition-all font-medium",
+                "px-2 py-1 rounded border text-[11px] font-medium transition-colors",
                 danger
-                  ? "border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-300"
-                  : "border-amber-200 bg-white text-amber-700 hover:bg-amber-100 hover:border-amber-300"
+                  ? "border-red-200 bg-white text-red-600 hover:bg-red-50"
+                  : "border-amber-200 bg-white text-amber-700 hover:bg-amber-100",
               )}
             >
-              {label}
+              {String(label)}
             </button>
           ))}
         </div>
