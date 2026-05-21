@@ -1,13 +1,25 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea, Select } from "@/components/ui/FormFields";
-import { X, Plus, MapPin } from "lucide-react";
+import { Field } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { getCurrencyByGPS } from "@/lib/utils";
+import { Plus } from "lucide-react";
 
 const schema = z.object({
   title: z.string().min(3, "Title is required"),
@@ -41,7 +53,11 @@ const CROP_OPTIONS = [
   "Other",
 ];
 
-export function CreateProjectModal({ onClose }: { onClose: () => void }) {
+interface Props {
+  onClose: () => void;
+}
+
+export function CreateProjectModal({ onClose }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
@@ -53,27 +69,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  });
+  } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const watchedGPS = watch("gps_coordinates");
-
-  // Auto-set currency when GPS changes
-  useState(() => {
-    if (watchedGPS) {
-      const currency = getCurrencyByGPS(watchedGPS);
-      setValue("currency", currency);
-    }
-  });
-
-  // We use useEffect to react to watch changes
-  const React = require("react");
-  React.useEffect(() => {
-    if (watchedGPS) {
-      const currency = getCurrencyByGPS(watchedGPS);
-      setValue("currency", currency);
-    }
+  useEffect(() => {
+    if (watchedGPS) setValue("currency", getCurrencyByGPS(watchedGPS));
   }, [watchedGPS, setValue]);
 
   function toggleCrop(crop: string) {
@@ -83,12 +83,9 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   function addCustomCrop() {
-    const trimmed = customCrop.trim();
-    if (trimmed && !selectedCrops.includes(trimmed)) {
-      setSelectedCrops((prev) => [
-        ...prev.filter((c) => c !== "Other"),
-        trimmed,
-      ]);
+    const t = customCrop.trim();
+    if (t && !selectedCrops.includes(t)) {
+      setSelectedCrops((prev) => [...prev.filter((c) => c !== "Other"), t]);
       setCustomCrop("");
     }
   }
@@ -110,7 +107,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
       const project = await res.json();
       if (!res.ok) throw new Error(project.error);
       router.push(`/project/${project.id}`);
-    } catch (err) {
+    } catch {
       alert("Failed to create project. Please try again.");
     } finally {
       setLoading(false);
@@ -118,25 +115,22 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-100 flex items-center justify-between rounded-t-2xl">
-          <h2 className="text-lg font-semibold text-slate-900">New project</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100"
-          >
-            <X className="w-5 h-5 text-slate-500" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>New project</DialogTitle>
+          <DialogDescription>
+            Fill in the details to create a new consultancy project.
+          </DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
-          {/* Client info */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 px-6 pb-6">
+          {/* ── Client ─────────────────────────────────────────── */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Client
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
+            </p>
+            <div className="grid grid-cols-2 gap-3">
               <Field
                 label="Project title"
                 error={errors.title?.message}
@@ -144,7 +138,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               >
                 <Input
                   {...register("title")}
-                  placeholder="e.g. Al Hamra Greenhouse Farm"
+                  placeholder="Al Hamra Greenhouse Farm"
                 />
               </Field>
               <Field
@@ -161,30 +155,35 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                 label="Client email"
                 error={errors.client_email?.message}
                 required
+                className="col-span-2"
               >
                 <Input
                   {...register("client_email")}
                   type="email"
                   placeholder="client@example.com"
-                  className="col-span-2"
                 />
               </Field>
             </div>
           </div>
 
-          {/* Site info */}
+          <Separator />
+
+          {/* ── Site ───────────────────────────────────────────── */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Site
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
+            </p>
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Region / City">
                 <Input {...register("region")} placeholder="Al Hamra" />
               </Field>
               <Field label="Country">
                 <Input {...register("country")} placeholder="Oman" />
               </Field>
-              <Field label="GPS coordinates" hint="Paste from Google Maps">
+              <Field
+                label="GPS coordinates"
+                hint="Paste from Google Maps — auto-detects currency"
+              >
                 <Input
                   {...register("gps_coordinates")}
                   placeholder="23.1234, 57.5678"
@@ -200,15 +199,18 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Project type */}
+          <Separator />
+
+          {/* ── Project ────────────────────────────────────────── */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Project
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
+            </p>
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Project type">
                 <Select
                   {...register("project_type")}
+                  placeholder="Select type"
                   options={[
                     {
                       value: "greenhouse_turnkey",
@@ -218,26 +220,25 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                     { value: "feasibility_only", label: "Feasibility Only" },
                     { value: "agro_tourism", label: "Agro-Tourism" },
                   ]}
-                  placeholder="Select type"
                 />
               </Field>
               <Field label="Client experience">
                 <Select
                   {...register("experience_level")}
+                  placeholder="Select experience"
                   options={[
                     { value: "first_time", label: "First-time grower" },
                     { value: "1_3_years", label: "1–3 years" },
                     { value: "3_6_years", label: "3–6 years" },
                     { value: "6_plus_years", label: "6+ years" },
                   ]}
-                  placeholder="Select experience"
                 />
               </Field>
-              <Field label="Budget range">
+              <Field label="Budget range" className="col-span-2">
                 <div className="flex gap-2">
                   <Select
                     {...register("currency")}
-                    className="w-24"
+                    className="w-28"
                     options={[
                       { value: "OMR", label: "OMR" },
                       { value: "USD", label: "USD" },
@@ -258,20 +259,23 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
+          <Separator />
+
+          {/* ── Crops ──────────────────────────────────────────── */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Target crops
-            </h3>
-            <div className="flex flex-wrap gap-2">
+            </p>
+            <div className="flex flex-wrap gap-1.5">
               {CROP_OPTIONS.map((crop) => (
                 <button
                   key={crop}
                   type="button"
                   onClick={() => toggleCrop(crop)}
-                  className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                  className={`px-2.5 py-1 rounded-full text-xs border font-medium transition-colors ${
                     selectedCrops.includes(crop)
-                      ? "bg-green-800 text-white border-green-800"
-                      : "bg-white text-slate-600 border-slate-300 hover:border-green-400"
+                      ? "bg-brand-800 text-white border-brand-800"
+                      : "bg-card text-muted-foreground border-border hover:border-brand-400 hover:text-foreground"
                   }`}
                 >
                   {crop}
@@ -279,61 +283,36 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             {selectedCrops.includes("Other") && (
-              <div className="flex gap-2 mt-3">
-                <input
-                  type="text"
+              <div className="flex gap-2 mt-2.5">
+                <Input
                   value={customCrop}
                   onChange={(e) => setCustomCrop(e.target.value)}
                   onKeyDown={(e) =>
                     e.key === "Enter" && (e.preventDefault(), addCustomCrop())
                   }
-                  placeholder="Type custom crop name..."
-                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Type custom crop name…"
+                  className="flex-1"
                 />
-                <button
-                  type="button"
-                  onClick={addCustomCrop}
-                  className="px-3 py-1.5 text-sm bg-green-800 text-white rounded-lg hover:bg-green-700"
-                >
+                <Button type="button" size="sm" onClick={addCustomCrop}>
                   Add
-                </button>
-              </div>
-            )}
-            {selectedCrops.filter((c) => c !== "Other").length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {selectedCrops
-                  .filter((c) => !CROP_OPTIONS.includes(c))
-                  .map((c) => (
-                    <span
-                      key={c}
-                      className="px-2 py-0.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full flex items-center gap-1"
-                    >
-                      {c}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedCrops((p) => p.filter((x) => x !== c))
-                        }
-                        className="hover:text-red-500"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
+                </Button>
               </div>
             )}
           </div>
 
-          {/* Notes */}
+          <Separator />
+
+          {/* ── Notes ──────────────────────────────────────────── */}
           <Field label="Call notes / brief">
             <Textarea
               {...register("consultant_notes")}
-              placeholder="Key points from the intro conversation..."
-              className="min-h-[80px]"
+              placeholder="Key points from the intro conversation…"
+              className="min-h-[72px]"
             />
           </Field>
 
-          <div className="flex gap-3 pt-2">
+          {/* ── Actions ────────────────────────────────────────── */}
+          <div className="flex gap-2 pt-1">
             <Button
               type="button"
               variant="outline"
@@ -343,12 +322,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               Cancel
             </Button>
             <Button type="submit" loading={loading} className="flex-1">
-              <Plus className="w-4 h-4" />
-              Create project
+              <Plus className="size-4" /> Create project
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
