@@ -17,13 +17,15 @@ export default async function SettingsPage() {
     .single();
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <TopBar title="Settings" />
-      <div className="px-8 py-6 max-w-2xl space-y-6">
-        <ProfileSettingsForm profile={profile} />
-        <BrandingSettingsForm profile={profile} />
-        {profile && <PaymentSettingsForm profile={profile} />}
-        <DangerZone />
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-6 py-6 space-y-5">
+          <ProfileSettingsForm profile={profile} />
+          <BrandingSettingsForm profile={profile} />
+          {profile && <PaymentSettingsForm profile={profile} />}
+          <DangerZone />
+        </div>
       </div>
     </div>
   );
