@@ -1,8 +1,12 @@
 "use client";
+
 import { useState, useRef } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/FormFields";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/ui/status";
+import { Separator } from "@/components/ui/separator";
 import {
   Save,
   Upload,
@@ -10,7 +14,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
+  EyeOff,
 } from "lucide-react";
+
+const DEFAULT_PRIMARY = "#1A5C38";
+const DEFAULT_SECONDARY = "#2E7D52";
 
 interface BrandingProfile {
   logo_url?: string | null;
@@ -21,15 +29,12 @@ interface BrandingProfile {
   company_name?: string | null;
 }
 
-interface Props {
+export function BrandingSettingsForm({
+  profile,
+}: {
   profile: BrandingProfile | null;
-}
-
-const DEFAULT_PRIMARY = "#1A5C38";
-const DEFAULT_SECONDARY = "#2E7D52";
-
-export function BrandingSettingsForm({ profile }: Props) {
-  const [logoUrl, setLogoUrl] = useState<string>(profile?.logo_url ?? "");
+}) {
+  const [logoUrl, setLogoUrl] = useState(profile?.logo_url ?? "");
   const [primary, setPrimary] = useState(
     profile?.brand_primary_color ?? DEFAULT_PRIMARY,
   );
@@ -59,8 +64,8 @@ export function BrandingSettingsForm({ profile }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setLogoUrl(data.url);
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Logo upload failed");
+    } catch (e: any) {
+      setErrorMsg(e.message || "Logo upload failed");
       setStatus("error");
     } finally {
       setUploading(false);
@@ -86,18 +91,12 @@ export function BrandingSettingsForm({ profile }: Props) {
         throw new Error(d.error);
       }
       setStatus("saved");
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Failed to save");
+    } catch (e: any) {
+      setErrorMsg(e.message || "Failed to save");
       setStatus("error");
     } finally {
       setSaving(false);
     }
-  }
-
-  function resetColors() {
-    setPrimary(DEFAULT_PRIMARY);
-    setSecondary(DEFAULT_SECONDARY);
-    setStatus("idle");
   }
 
   return (
@@ -105,16 +104,21 @@ export function BrandingSettingsForm({ profile }: Props) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-slate-900">Report branding</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              These defaults are applied to every new report you generate.
+            <CardTitle>Report branding</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Applied to every new report you generate.
             </p>
           </div>
           <button
-            onClick={() => setPreview((p) => !p)}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+            onClick={() => setPreview((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors"
           >
-            <Eye className="w-3 h-3" /> {preview ? "Hide" : "Preview"}
+            {preview ? (
+              <EyeOff className="size-3.5" />
+            ) : (
+              <Eye className="size-3.5" />
+            )}
+            {preview ? "Hide preview" : "Preview"}
           </button>
         </div>
       </CardHeader>
@@ -132,10 +136,10 @@ export function BrandingSettingsForm({ profile }: Props) {
                 <img
                   src={logoUrl}
                   alt="Logo"
-                  className="h-8 mb-3 object-contain brightness-0 invert"
+                  className="h-7 mb-3 object-contain brightness-0 invert"
                 />
               )}
-              <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">
                 Feasibility Report
               </p>
               <h3 className="text-lg font-bold">
@@ -157,11 +161,11 @@ export function BrandingSettingsForm({ profile }: Props) {
 
         {/* Logo upload */}
         <div>
-          <p className="text-xs font-medium text-slate-600 mb-2">
+          <p className="text-xs font-medium text-foreground/80 mb-2">
             Company logo
           </p>
           <div className="flex items-center gap-4">
-            <div className="w-24 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-12 rounded-lg bg-muted border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
               {logoUrl ? (
                 <img
                   src={logoUrl}
@@ -169,24 +173,24 @@ export function BrandingSettingsForm({ profile }: Props) {
                   className="w-full h-full object-contain p-1"
                 />
               ) : (
-                <ImageIcon className="w-5 h-5 text-slate-300" />
+                <ImageIcon className="size-5 text-muted-foreground/40" />
               )}
             </div>
             <div>
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-800 font-medium px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium px-3 py-1.5 rounded-lg border border-brand-200 hover:bg-brand-50 transition-colors disabled:opacity-50"
               >
-                <Upload className="w-3 h-3" />
+                <Upload className="size-3" />
                 {uploading
                   ? "Uploading…"
                   : logoUrl
                     ? "Replace logo"
                     : "Upload logo"}
               </button>
-              <p className="text-[11px] text-slate-400 mt-1">
-                PNG or SVG recommended · shown on report header
+              <p className="text-[11px] text-muted-foreground mt-1">
+                PNG or SVG · shown on report cover
               </p>
               <input
                 ref={fileRef}
@@ -202,7 +206,7 @@ export function BrandingSettingsForm({ profile }: Props) {
             {logoUrl && (
               <button
                 onClick={() => setLogoUrl("")}
-                className="text-xs text-red-500 hover:text-red-700"
+                className="text-xs text-destructive hover:text-destructive/80 ml-auto"
               >
                 Remove
               </button>
@@ -210,20 +214,28 @@ export function BrandingSettingsForm({ profile }: Props) {
           </div>
         </div>
 
+        <Separator />
+
         {/* Colour pickers */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-600">Brand colours</p>
+            <p className="text-xs font-medium text-foreground/80">
+              Brand colours
+            </p>
             <button
-              onClick={resetColors}
-              className="text-xs text-slate-400 hover:text-slate-600"
+              onClick={() => {
+                setPrimary(DEFAULT_PRIMARY);
+                setSecondary(DEFAULT_SECONDARY);
+                setStatus("idle");
+              }}
+              className="text-[11px] text-muted-foreground hover:text-foreground"
             >
               Reset to default
             </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[11px] text-slate-500 block mb-1.5">
+              <label className="text-[11px] text-muted-foreground block mb-1.5">
                 Primary colour
               </label>
               <div className="flex items-center gap-2">
@@ -234,7 +246,7 @@ export function BrandingSettingsForm({ profile }: Props) {
                     setPrimary(e.target.value);
                     setStatus("idle");
                   }}
-                  className="w-9 h-9 rounded-lg border border-slate-200 cursor-pointer p-0.5 bg-white"
+                  className="w-8 h-8 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
                 />
                 <Input
                   value={primary}
@@ -243,12 +255,12 @@ export function BrandingSettingsForm({ profile }: Props) {
                     setStatus("idle");
                   }}
                   placeholder="#1A5C38"
-                  className="font-mono text-sm"
+                  className="font-mono text-xs"
                 />
               </div>
             </div>
             <div>
-              <label className="text-[11px] text-slate-500 block mb-1.5">
+              <label className="text-[11px] text-muted-foreground block mb-1.5">
                 Secondary colour
               </label>
               <div className="flex items-center gap-2">
@@ -259,7 +271,7 @@ export function BrandingSettingsForm({ profile }: Props) {
                     setSecondary(e.target.value);
                     setStatus("idle");
                   }}
-                  className="w-9 h-9 rounded-lg border border-slate-200 cursor-pointer p-0.5 bg-white"
+                  className="w-8 h-8 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
                 />
                 <Input
                   value={secondary}
@@ -268,24 +280,26 @@ export function BrandingSettingsForm({ profile }: Props) {
                     setStatus("idle");
                   }}
                   placeholder="#2E7D52"
-                  className="font-mono text-sm"
+                  className="font-mono text-xs"
                 />
               </div>
             </div>
           </div>
-
-          {/* Colour preview strip */}
+          {/* Gradient preview strip */}
           <div
-            className="mt-3 h-3 rounded-full overflow-hidden"
+            className="mt-3 h-2 rounded-full"
             style={{
               background: `linear-gradient(to right, ${primary}, ${secondary})`,
             }}
           />
         </div>
 
+        <Separator />
+
         {/* Footer text */}
-        <Field label="Report footer text">
+        <Field label="Report footer text" htmlFor="footer_text">
           <Input
+            id="footer_text"
             value={footerText}
             onChange={(e) => {
               setFooterText(e.target.value);
@@ -296,21 +310,21 @@ export function BrandingSettingsForm({ profile }: Props) {
         </Field>
 
         {/* Status + save */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             {status === "saved" && (
-              <p className="flex items-center gap-1.5 text-sm text-green-700">
-                <CheckCircle2 className="w-4 h-4" /> Branding saved
-              </p>
+              <InlineAlert tone="success" icon={<CheckCircle2 />}>
+                Branding saved
+              </InlineAlert>
             )}
             {status === "error" && (
-              <p className="flex items-center gap-1.5 text-sm text-red-600">
-                <AlertCircle className="w-4 h-4" /> {errorMsg}
-              </p>
+              <InlineAlert tone="error" icon={<AlertCircle />}>
+                {errorMsg}
+              </InlineAlert>
             )}
           </div>
           <Button onClick={handleSave} loading={saving}>
-            <Save className="w-4 h-4" /> Save branding
+            <Save className="size-4" /> Save branding
           </Button>
         </div>
       </CardContent>
