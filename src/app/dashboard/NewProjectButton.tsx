@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CreateProjectModal } from "@/components/project/CreateProjectModal";
@@ -8,8 +9,8 @@ export function NewProjectButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
-        <Plus className="w-4 h-4" /> New project
+      <Button size="sm" onClick={() => setOpen(true)}>
+        <Plus className="size-4" /> New project
       </Button>
       {open && <CreateProjectModal onClose={() => setOpen(false)} />}
     </>
