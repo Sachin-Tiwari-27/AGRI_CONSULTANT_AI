@@ -1,8 +1,13 @@
 "use client";
+
 import { useState, useRef } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/FormFields";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/ui/status";
+import { Separator } from "@/components/ui/separator";
 import { Save, User, Camera, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface ProfileSettings {
@@ -16,11 +21,11 @@ interface ProfileSettings {
   email?: string | null;
 }
 
-interface Props {
+export function ProfileSettingsForm({
+  profile,
+}: {
   profile: ProfileSettings | null;
-}
-
-export function ProfileSettingsForm({ profile }: Props) {
+}) {
   const [form, setForm] = useState({
     full_name: profile?.full_name ?? "",
     phone: profile?.phone ?? "",
@@ -29,7 +34,7 @@ export function ProfileSettingsForm({ profile }: Props) {
     website: profile?.website ?? "",
     linkedin_url: profile?.linkedin_url ?? "",
   });
-  const [avatarUrl, setAvatarUrl] = useState<string>(profile?.avatar_url ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
@@ -54,8 +59,8 @@ export function ProfileSettingsForm({ profile }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setAvatarUrl(data.url);
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Avatar upload failed");
+    } catch (e: any) {
+      setErrorMsg(e.message || "Avatar upload failed");
       setStatus("error");
     } finally {
       setUploading(false);
@@ -76,8 +81,8 @@ export function ProfileSettingsForm({ profile }: Props) {
         throw new Error(d.error);
       }
       setStatus("saved");
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Failed to save");
+    } catch (e: any) {
+      setErrorMsg(e.message || "Failed to save");
       setStatus("error");
     } finally {
       setSaving(false);
@@ -87,16 +92,16 @@ export function ProfileSettingsForm({ profile }: Props) {
   return (
     <Card>
       <CardHeader>
-        <h2 className="font-semibold text-slate-900">Profile</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
+        <CardTitle>Profile</CardTitle>
+        <p className="text-xs text-muted-foreground">
           Your consultant identity shown to clients and in reports.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Avatar upload */}
+        {/* Avatar */}
         <div className="flex items-center gap-5">
           <div className="relative flex-shrink-0">
-            <div className="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-muted border-2 border-border overflow-hidden flex items-center justify-center">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -104,15 +109,15 @@ export function ProfileSettingsForm({ profile }: Props) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <User className="w-7 h-7 text-slate-400" />
+                <User className="size-7 text-muted-foreground" />
               )}
             </div>
             <button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-700 rounded-full flex items-center justify-center border-2 border-white hover:bg-green-600 transition-colors disabled:opacity-50"
+              className="absolute -bottom-1 -right-1 w-6 h-6 bg-brand-700 rounded-full flex items-center justify-center border-2 border-background hover:bg-brand-600 transition-colors disabled:opacity-50"
             >
-              <Camera className="w-3 h-3 text-white" />
+              <Camera className="size-3 text-white" />
             </button>
             <input
               ref={fileRef}
@@ -126,53 +131,64 @@ export function ProfileSettingsForm({ profile }: Props) {
             />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-800">Profile photo</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {uploading ? "Uploading…" : "JPEG, PNG or WebP up to 5MB"}
+            <p className="text-sm font-medium text-foreground">Profile photo</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {uploading ? "Uploading…" : "JPEG, PNG or WebP up to 5 MB"}
             </p>
             <button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="text-xs text-green-700 hover:text-green-800 font-medium mt-1 disabled:opacity-50"
+              className="text-xs text-brand-700 hover:text-brand-800 font-medium mt-1 disabled:opacity-50"
             >
               {avatarUrl ? "Change photo" : "Upload photo"}
             </button>
           </div>
         </div>
 
+        <Separator />
+
         {/* Core fields */}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Full name" required>
+          <Field label="Full name" required htmlFor="full_name">
             <Input
+              id="full_name"
               value={form.full_name}
               onChange={(e) => set("full_name", e.target.value)}
               placeholder="Your full name"
             />
           </Field>
-          <Field label="Phone number">
+          <Field label="Phone number" htmlFor="phone">
             <Input
+              id="phone"
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
               placeholder="+968 9XXX XXXX"
             />
           </Field>
-          <Field label="Company / organisation">
+          <Field label="Company / Organisation" htmlFor="company_name">
             <Input
+              id="company_name"
               value={form.company_name}
               onChange={(e) => set("company_name", e.target.value)}
               placeholder="AgriConsult Ltd."
             />
           </Field>
-          <Field label="Website">
+          <Field label="Website" htmlFor="website">
             <Input
+              id="website"
               value={form.website}
               onChange={(e) => set("website", e.target.value)}
               placeholder="https://yoursite.com"
               type="url"
             />
           </Field>
-          <Field label="LinkedIn URL" className="col-span-2">
+          <Field
+            label="LinkedIn URL"
+            htmlFor="linkedin_url"
+            className="col-span-2"
+          >
             <Input
+              id="linkedin_url"
               value={form.linkedin_url}
               onChange={(e) => set("linkedin_url", e.target.value)}
               placeholder="https://linkedin.com/in/yourname"
@@ -181,45 +197,47 @@ export function ProfileSettingsForm({ profile }: Props) {
           </Field>
         </div>
 
-        {/* Bio */}
-        <Field label="Bio / specialisations">
+        <Field label="Bio / specialisations" htmlFor="bio">
           <Textarea
+            id="bio"
             value={form.bio}
             onChange={(e) => set("bio", e.target.value)}
             placeholder="Brief description of your expertise, crops specialised in, regions covered…"
-            className="min-h-[80px]"
+            className="min-h-[72px]"
           />
         </Field>
 
         {/* Email (read-only) */}
         <div>
-          <p className="text-xs font-medium text-slate-600 mb-1.5">
+          <p className="text-xs font-medium text-foreground/80 mb-1.5">
             Email address
           </p>
-          <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <div className="flex h-9 items-center px-3 rounded-lg border border-border bg-muted/40 text-sm text-muted-foreground">
             {profile?.email ?? "—"}
-            <span className="ml-2 text-[10px] text-slate-400">
+            <span className="ml-2 text-[11px] text-muted-foreground/60">
               (cannot be changed here)
             </span>
-          </p>
+          </div>
         </div>
 
+        <Separator />
+
         {/* Status + save */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             {status === "saved" && (
-              <p className="flex items-center gap-1.5 text-sm text-green-700">
-                <CheckCircle2 className="w-4 h-4" /> Profile saved
-              </p>
+              <InlineAlert tone="success" icon={<CheckCircle2 />}>
+                Profile saved
+              </InlineAlert>
             )}
             {status === "error" && (
-              <p className="flex items-center gap-1.5 text-sm text-red-600">
-                <AlertCircle className="w-4 h-4" /> {errorMsg}
-              </p>
+              <InlineAlert tone="error" icon={<AlertCircle />}>
+                {errorMsg}
+              </InlineAlert>
             )}
           </div>
           <Button onClick={handleSave} loading={saving}>
-            <Save className="w-4 h-4" /> Save profile
+            <Save className="size-4" /> Save profile
           </Button>
         </div>
       </CardContent>
