@@ -1,15 +1,31 @@
 "use client";
+
 import { useState } from "react";
 import {
-  X,
-  DollarSign,
-  Lock,
-  Unlock,
-  AlertCircle,
-  CheckCircle2,
-  CreditCard,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { InlineAlert } from "@/components/ui/status";
+import { Lock, Unlock, AlertCircle, CreditCard } from "lucide-react";
+
+const CURRENCIES = [
+  { value: "USD", label: "USD — US Dollar" },
+  { value: "OMR", label: "OMR — Omani Rial" },
+  { value: "AED", label: "AED — UAE Dirham" },
+  { value: "SAR", label: "SAR — Saudi Riyal" },
+  { value: "QAR", label: "QAR — Qatari Riyal" },
+  { value: "KWD", label: "KWD — Kuwaiti Dinar" },
+  { value: "BHD", label: "BHD — Bahraini Dinar" },
+  { value: "GBP", label: "GBP — British Pound" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "INR", label: "INR — Indian Rupee" },
+];
 
 interface Props {
   projectId: string;
@@ -24,19 +40,6 @@ interface Props {
   ) => Promise<void>;
   onClose: () => void;
 }
-
-const CURRENCY_OPTIONS = [
-  { value: "USD", label: "USD — US Dollar" },
-  { value: "OMR", label: "OMR — Omani Rial" },
-  { value: "AED", label: "AED — UAE Dirham" },
-  { value: "SAR", label: "SAR — Saudi Riyal" },
-  { value: "QAR", label: "QAR — Qatari Riyal" },
-  { value: "KWD", label: "KWD — Kuwaiti Dinar" },
-  { value: "BHD", label: "BHD — Bahraini Dinar" },
-  { value: "GBP", label: "GBP — British Pound" },
-  { value: "EUR", label: "EUR — Euro" },
-  { value: "INR", label: "INR — Indian Rupee" },
-];
 
 export function PaymentGateModal({
   projectId,
@@ -76,54 +79,44 @@ export function PaymentGateModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-start justify-between px-6 py-5 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center">
-              <CreditCard className="w-4.5 h-4.5 text-green-700" />
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center">
+              <CreditCard className="size-4 text-brand-700" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                Set report price before publishing
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">
+              <DialogTitle>Set report price</DialogTitle>
+              <DialogDescription className="truncate max-w-xs">
                 {projectTitle}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
-        {/* Body */}
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-4 space-y-4">
           {/* Charge toggle */}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setChargeClient(true)}
               className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border-2 transition-all ${
                 chargeClient
-                  ? "border-green-600 bg-green-50"
-                  : "border-slate-200 hover:border-slate-300"
+                  ? "border-brand-600 bg-brand-50"
+                  : "border-border hover:border-border/60"
               }`}
             >
               <Lock
-                className={`w-5 h-5 ${chargeClient ? "text-green-700" : "text-slate-400"}`}
+                className={`size-5 ${chargeClient ? "text-brand-700" : "text-muted-foreground"}`}
               />
               <div className="text-center">
                 <p
-                  className={`text-sm font-semibold ${chargeClient ? "text-green-800" : "text-slate-600"}`}
+                  className={`text-xs font-semibold ${chargeClient ? "text-brand-800" : "text-foreground"}`}
                 >
                   Charge client
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Client pays to unlock full report
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                  Client pays to unlock report
                 </p>
               </div>
             </button>
@@ -133,44 +126,39 @@ export function PaymentGateModal({
               className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border-2 transition-all ${
                 !chargeClient
                   ? "border-blue-500 bg-blue-50"
-                  : "border-slate-200 hover:border-slate-300"
+                  : "border-border hover:border-border/60"
               }`}
             >
               <Unlock
-                className={`w-5 h-5 ${!chargeClient ? "text-blue-600" : "text-slate-400"}`}
+                className={`size-5 ${!chargeClient ? "text-blue-600" : "text-muted-foreground"}`}
               />
               <div className="text-center">
                 <p
-                  className={`text-sm font-semibold ${!chargeClient ? "text-blue-800" : "text-slate-600"}`}
+                  className={`text-xs font-semibold ${!chargeClient ? "text-blue-800" : "text-foreground"}`}
                 >
                   Free access
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Client gets full report at no charge
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                  Client gets full report free
                 </p>
               </div>
             </button>
           </div>
 
-          {/* Price input — only shown when charging */}
+          {/* Price input */}
           {chargeClient && (
-            <div className="space-y-3 pt-1">
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1.5">
+                <label className="text-xs font-medium text-foreground/80 block mb-1.5">
                   Amount to charge
                 </label>
                 <div className="flex gap-2">
-                  <select
+                  <Select
                     value={currency}
                     onChange={(e) => setCurrency(e.target.value)}
-                    className="text-sm px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white text-slate-700 w-32"
-                  >
-                    {CURRENCY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.value}
-                      </option>
-                    ))}
-                  </select>
+                    options={CURRENCIES}
+                    className="w-36"
+                  />
                   <input
                     type="number"
                     value={price}
@@ -178,66 +166,54 @@ export function PaymentGateModal({
                     placeholder="0.00"
                     min="0"
                     step="0.01"
-                    className="flex-1 text-sm px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                    className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               </div>
 
-              {/* Stripe notice */}
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-800">
-                  Payment collection requires Stripe to be connected. If Stripe
-                  is not set up, the client will see the price but you'll need
-                  to collect payment manually and then mark it as paid from the
-                  report tab.
-                </p>
-              </div>
+              <InlineAlert tone="warning" icon={<AlertCircle />}>
+                Stripe must be connected for online payments. Otherwise, collect
+                payment manually and mark as paid from the Report tab.
+              </InlineAlert>
             </div>
           )}
 
-          {/* Free access notice */}
           {!chargeClient && (
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-800">
-                The full report will be immediately accessible to {clientEmail}{" "}
-                at no charge. You can still collect payment offline and mark it
-                as paid later.
-              </p>
-            </div>
+            <InlineAlert tone="info" icon={<Unlock className="size-3.5" />}>
+              The full report will be immediately accessible to{" "}
+              <strong>{clientEmail}</strong> at no charge.
+            </InlineAlert>
           )}
 
           {error && (
-            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <InlineAlert tone="error" icon={<AlertCircle />}>
               {error}
-            </div>
+            </InlineAlert>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
-          <p className="text-xs text-slate-500">
+        <DialogFooter>
+          <p className="text-[11px] text-muted-foreground mr-auto">
             {chargeClient
-              ? `Client at ${clientEmail} will be asked to pay before downloading`
-              : `Client at ${clientEmail} gets immediate full access`}
+              ? `${clientEmail} will be asked to pay before downloading`
+              : `${clientEmail} gets immediate full access`}
           </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleConfirm} loading={saving}>
-              {chargeClient ? (
-                <Lock className="w-3.5 h-3.5" />
-              ) : (
-                <Unlock className="w-3.5 h-3.5" />
-              )}
-              {chargeClient ? "Set price & publish" : "Publish free"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleConfirm} loading={saving}>
+            {chargeClient ? (
+              <>
+                <Lock className="size-3.5" /> Set price &amp; publish
+              </>
+            ) : (
+              <>
+                <Unlock className="size-3.5" /> Publish free
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
