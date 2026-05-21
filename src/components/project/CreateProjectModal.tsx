@@ -85,9 +85,15 @@ export function CreateProjectModal({ onClose }: Props) {
   function addCustomCrop() {
     const t = customCrop.trim();
     if (t && !selectedCrops.includes(t)) {
-      setSelectedCrops((prev) => [...prev.filter((c) => c !== "Other"), t]);
+      // FIX 1: Do not filter out "Other" so the input stays visible
+      setSelectedCrops((prev) => [...prev, t]);
       setCustomCrop("");
     }
+  }
+
+  // FIX 2: Helper to remove custom crops
+  function removeCustomCrop(crop: string) {
+    setSelectedCrops((prev) => prev.filter((c) => c !== crop));
   }
 
   async function onSubmit(data: FormData) {
@@ -281,7 +287,27 @@ export function CreateProjectModal({ onClose }: Props) {
                   {crop}
                 </button>
               ))}
+
+              {/* FIX 3: Display newly added custom crops so they are visible and removable */}
+              {selectedCrops
+                .filter((crop) => !CROP_OPTIONS.includes(crop))
+                .map((crop) => (
+                  <span
+                    key={crop}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border font-medium transition-colors bg-brand-800 text-white border-brand-800"
+                  >
+                    {crop}
+                    <button
+                      type="button"
+                      onClick={() => removeCustomCrop(crop)}
+                      className="text-white hover:text-red-200 focus:outline-none flex items-center justify-center"
+                    >
+                      <Plus className="w-3 h-3 rotate-45" />
+                    </button>
+                  </span>
+                ))}
             </div>
+
             {selectedCrops.includes("Other") && (
               <div className="flex gap-2 mt-2.5">
                 <Input
