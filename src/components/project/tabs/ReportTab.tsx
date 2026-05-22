@@ -28,6 +28,7 @@ import {
   ChevronRight,
   FileText,
   PaperclipIcon,
+  Eye,
 } from "lucide-react";
 import type { Report, ReportSectionKey, Project } from "@/types";
 
@@ -91,6 +92,8 @@ export function ReportTab({
     ORDERED_KEYS.length > 0
       ? Math.round((generatedCount / ORDERED_KEYS.length) * 100)
       : 0;
+
+  const previewUrl = `/project/${project.id}/report`;
 
   /* ── Auto-select first section when report loads ─────────────── */
   const prevReportRef = useRef<string | null>(null);
@@ -469,10 +472,18 @@ export function ReportTab({
                     size="sm"
                     variant="outline"
                     className="w-full justify-start"
+                    onClick={() => window.open(previewUrl, "_blank")}
+                  >
+                    <Eye className="size-3.5 mr-2" /> Preview Report
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-start"
                     onClick={resendNotification}
                     loading={saving}
                   >
-                    <Send className="size-3.5" /> Resend email
+                    <Send className="size-3.5 mr-2" /> Resend email
                   </Button>
                   <Button
                     size="sm"
@@ -481,7 +492,7 @@ export function ReportTab({
                     onClick={downloadPdf}
                     loading={downloading}
                   >
-                    <Download className="size-3.5" /> Download PDF
+                    <Download className="size-3.5 mr-2" /> Download PDF
                   </Button>
                   <Button
                     size="sm"
@@ -490,7 +501,7 @@ export function ReportTab({
                     onClick={handlePublishClick}
                     loading={saving}
                   >
-                    <RefreshCw className="size-3.5" /> Republish
+                    <RefreshCw className="size-3.5 mr-2" /> Republish
                   </Button>
                   {reportPrice > 0 && !isCompleted && (
                     <Button
@@ -507,12 +518,20 @@ export function ReportTab({
                 <>
                   <Button
                     size="sm"
+                    variant="outline"
+                    className="w-full justify-start mb-1.5"
+                    onClick={() => window.open(previewUrl, "_blank")}
+                  >
+                    <Eye className="size-3.5 mr-2" /> Preview Report
+                  </Button>
+                  <Button
+                    size="sm"
                     className="w-full"
                     onClick={handlePublishClick}
                     disabled={!allApproved}
                     loading={saving}
                   >
-                    <Lock className="size-3.5" /> Publish report
+                    <Lock className="size-3.5 mr-2" /> Publish report
                   </Button>
                   <Button
                     size="sm"
@@ -522,7 +541,7 @@ export function ReportTab({
                     loading={isStreaming}
                     disabled={isStreaming}
                   >
-                    <RefreshCw className="size-3.5" /> Regenerate all
+                    <RefreshCw className="size-3.5 mr-2" /> Regenerate all
                   </Button>
                 </>
               )}
