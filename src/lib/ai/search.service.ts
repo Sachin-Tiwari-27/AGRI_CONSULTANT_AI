@@ -1,3 +1,23 @@
+// ── search.service.ts ─────────────────────────────────────────────────────────
+//
+// Climate and market data fetches are now cached via DataCache.
+// Climate data: 7-day TTL (historical archive barely changes).
+// Market data:  24-hour TTL (prices shift daily).
+
+import { DataCache, CACHE_TTL } from "./gateway";
+import { getRedisClient } from "./gateway";
+
+// Lazy singleton — initialised on first use
+let _cache: DataCache | null = null;
+async function getCache(): Promise<DataCache> {
+  if (_cache) return _cache;
+  const redis = await getRedisClient();
+  _cache = new DataCache(redis);
+  return _cache;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface TavilyResult {
   title: string;
   url: string;
@@ -10,9 +30,11 @@ interface TavilyResponse {
   answer?: string;
 }
 
+// ── Web search (no cache — queries are unique per call) ───────────────────────
+
 export async function searchWeb(
   query: string,
-  maxResults = 6, // Back to 6 for better depth
+  maxResults = 6,
 ): Promise<string> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
@@ -29,25 +51,18 @@ export async function searchWeb(
         query,
         max_results: maxResults,
         include_answer: true,
-        search_depth: "advanced", // Back to advanced for deep detail
+        search_depth: "advanced",
       }),
     });
 
     if (!response.ok) throw new Error(`Tavily error: ${response.status}`);
 
     const data: TavilyResponse = await response.json();
-
     const sections: string[] = [];
 
-    if (data.answer) {
-      sections.push(`Summary: ${data.answer}`);
-    }
-
-    // Increase snippet length to 1000 chars for richer detail
+    if (data.answer) sections.push(`Summary: ${data.answer}`);
     data.results.forEach((r, i) => {
-      sections.push(
-        `[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 1000)}`,
-      );
+      sections.push(`[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 1000)}`);
     });
 
     return sections.join("\n\n");
@@ -57,18 +72,25 @@ export async function searchWeb(
   }
 }
 
-/**
- * Run market research with 2 targeted queries instead of 4 parallel ones.
- * This halves the number of external API calls and reduces prompt context size.
- */
+// ── Market research (cached 24h) ──────────────────────────────────────────────
+
 export async function researchMarket(
   crops: string[],
   region: string,
   country: string,
 ): Promise<string> {
+  const cache = await getCache();
+  const cacheKey = DataCache.marketKey(country, crops);
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    console.info(`[Search] Market data cache hit: ${cacheKey}`);
+    return cached;
+  }
+
   const primaryCrop = crops[0] || "vegetables";
   const cropList = crops.slice(0, 5).join(", ");
-  // Four focused queries for deep coverage
+
   const queries = [
     `${cropList} wholesale price market trends 2024 2025 ${country} ${region}`,
     `${cropList} demand and supply analysis ${country} agricultural export statistics`,
@@ -76,7 +98,6 @@ export async function researchMarket(
     `government subsidies and agricultural incentives for greenhouse in ${country}`,
   ];
 
-  // Parallel execution for deeper and faster research
   const results = await Promise.all(
     queries.map(async (q) => {
       try {
@@ -85,17 +106,29 @@ export async function researchMarket(
       } catch {
         return `Query: ${q}\nSearch failed.`;
       }
-    })
+    }),
   );
 
-  return results.join("\n\n---\n\n");
+  const combined = results.join("\n\n---\n\n");
+
+  await cache.set(cacheKey, combined, CACHE_TTL.MARKET_DATA);
+  console.info(`[Search] Market data cached: ${cacheKey}`);
+
+  return combined;
 }
 
-// Fetch live climate data from Open-Meteo (free, no key needed)
-export async function fetchClimateData(
-  lat: number,
-  lon: number,
-): Promise<string> {
+// ── Climate data (cached 7 days) ──────────────────────────────────────────────
+
+export async function fetchClimateData(lat: number, lon: number): Promise<string> {
+  const cache = await getCache();
+  const cacheKey = DataCache.climateKey(lat, lon);
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    console.info(`[Search] Climate data cache hit: ${cacheKey}`);
+    return cached;
+  }
+
   try {
     const url = new URL("https://archive-api.open-meteo.com/v1/archive");
     url.searchParams.set("latitude", lat.toString());
@@ -106,7 +139,6 @@ export async function fetchClimateData(
       "daily",
       "temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_max",
     );
-
     url.searchParams.set("start_date", "2022-01-01");
     url.searchParams.set("end_date", "2025-12-31");
 
@@ -133,20 +165,9 @@ export async function fetchClimateData(
     });
 
     const monthNames = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
+      "Jan","Feb","Mar","Apr","May","Jun",
+      "Jul","Aug","Sep","Oct","Nov","Dec",
     ];
-
     const avg = (arr: number[]) =>
       arr.length
         ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1)
@@ -157,7 +178,15 @@ export async function fetchClimateData(
       return `| ${monthNames[i]} | ${avg(m.maxTemps)}°C | ${avg(m.minTemps)}°C | ${avg(m.humidity)}% |`;
     });
 
-    return `| Month | Avg Max Temp | Avg Min Temp | Avg Max Humidity |\n| :--- | :--- | :--- | :--- |\n${rows.join("\n")}`;
+    const result =
+      `| Month | Avg Max Temp | Avg Min Temp | Avg Max Humidity |\n` +
+      `| :--- | :--- | :--- | :--- |\n` +
+      rows.join("\n");
+
+    await cache.set(cacheKey, result, CACHE_TTL.CLIMATE_DATA);
+    console.info(`[Search] Climate data cached: ${cacheKey}`);
+
+    return result;
   } catch (err) {
     console.error("[Climate] Failed to fetch climate data:", err);
     return "Climate data unavailable — manual entry required.";
