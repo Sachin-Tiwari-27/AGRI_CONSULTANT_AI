@@ -55,16 +55,14 @@ class MemoryLRU {
 // ── TTL presets ────────────────────────────────────────────────────────────────
 
 export const CACHE_TTL = {
-  CLIMATE_DATA: 7 * 24 * 60 * 60,   // 7 days — historical weather barely changes
-  MARKET_DATA:  24 * 60 * 60,        // 24 hours — prices shift daily
+  CLIMATE_DATA: 7 * 24 * 60 * 60, // 7 days — historical weather barely changes
+  MARKET_DATA: 24 * 60 * 60, // 24 hours — prices shift daily
 } as const;
 
 // ── DataCache ──────────────────────────────────────────────────────────────────
 
 export class DataCache {
-  private l1 = new MemoryLRU(
-    Number(process.env.AI_CACHE_MAX_ENTRIES ?? 200),
-  );
+  private l1 = new MemoryLRU(Number(process.env.AI_CACHE_MAX_ENTRIES ?? 200));
 
   constructor(private redis: Redis | null) {}
 
@@ -123,9 +121,15 @@ export class DataCache {
     return `climate:${lat.toFixed(2)}:${lon.toFixed(2)}`;
   }
 
-  static marketKey(country: string, crops: string[]): string {
-    const sorted = [...crops].sort().join(",").toLowerCase().replace(/\s+/g, "_");
+  // Update signature to include region
+  static marketKey(country: string, region: string, crops: string[]): string {
+    const sorted = [...crops]
+      .sort()
+      .join(",")
+      .toLowerCase()
+      .replace(/\s+/g, "_");
     const c = country.toLowerCase().replace(/\s+/g, "_");
-    return `market:${c}:${sorted}`;
+    const r = region.toLowerCase().replace(/\s+/g, "_");
+    return `market:${c}:${r}:${sorted}`;
   }
 }

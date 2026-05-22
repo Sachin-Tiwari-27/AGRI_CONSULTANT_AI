@@ -62,7 +62,9 @@ export async function searchWeb(
 
     if (data.answer) sections.push(`Summary: ${data.answer}`);
     data.results.forEach((r, i) => {
-      sections.push(`[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 1000)}`);
+      sections.push(
+        `[Source ${i + 1}] ${r.title}\n${r.content.slice(0, 1000)}`,
+      );
     });
 
     return sections.join("\n\n");
@@ -74,13 +76,16 @@ export async function searchWeb(
 
 // ── Market research (cached 24h) ──────────────────────────────────────────────
 
+// ── Market research (cached 24h) ──────────────────────────────────────────────
+
 export async function researchMarket(
   crops: string[],
   region: string,
   country: string,
 ): Promise<string> {
   const cache = await getCache();
-  const cacheKey = DataCache.marketKey(country, crops);
+  // Pass the region into the key builder
+  const cacheKey = DataCache.marketKey(country, region, crops);
 
   const cached = await cache.get(cacheKey);
   if (cached) {
@@ -119,7 +124,10 @@ export async function researchMarket(
 
 // ── Climate data (cached 7 days) ──────────────────────────────────────────────
 
-export async function fetchClimateData(lat: number, lon: number): Promise<string> {
+export async function fetchClimateData(
+  lat: number,
+  lon: number,
+): Promise<string> {
   const cache = await getCache();
   const cacheKey = DataCache.climateKey(lat, lon);
 
@@ -165,8 +173,18 @@ export async function fetchClimateData(lat: number, lon: number): Promise<string
     });
 
     const monthNames = [
-      "Jan","Feb","Mar","Apr","May","Jun",
-      "Jul","Aug","Sep","Oct","Nov","Dec",
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
     ];
     const avg = (arr: number[]) =>
       arr.length

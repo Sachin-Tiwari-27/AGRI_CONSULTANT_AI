@@ -4,7 +4,11 @@ import { RateLimiter } from "./rate-limiter";
 import { executeOne } from "./executor";
 import { resolveRoute, buildChain } from "./router";
 import { estimateCost } from "./pricing";
-import { GatewayLogger, ConsoleLoggerPlugin, SupabaseLoggerPlugin } from "./logger";
+import {
+  GatewayLogger,
+  ConsoleLoggerPlugin,
+  SupabaseLoggerPlugin,
+} from "./logger";
 import { getRedisClient } from "./redis";
 import {
   RateLimitError,
@@ -32,22 +36,26 @@ export class Gateway {
   private circuitBreaker: CircuitBreaker | null = null;
   private rateLimiter: RateLimiter | null = null;
   private logger: GatewayLogger;
-  private initialised = false;
+  // Replace `private initialised = false;` with a promise tracker
+  private initPromise: Promise<void> | null = null;
 
-  constructor(private plugins = [
-    new ConsoleLoggerPlugin(),
-    new SupabaseLoggerPlugin(),
-  ]) {
+  constructor(
+    private plugins = [new ConsoleLoggerPlugin(), new SupabaseLoggerPlugin()],
+  ) {
     this.logger = new GatewayLogger(plugins);
   }
 
   private async init(): Promise<void> {
-    if (this.initialised) return;
-    this.initialised = true;
+    // If initialization is already in progress or completed, wait for it
+    if (!this.initPromise) {
+      this.initPromise = (async () => {
+        const redis = await getRedisClient();
+        this.circuitBreaker = new CircuitBreaker(redis);
+        this.rateLimiter = new RateLimiter(redis);
+      })();
+    }
 
-    const redis = await getRedisClient();
-    this.circuitBreaker = new CircuitBreaker(redis);
-    this.rateLimiter = new RateLimiter(redis);
+    return this.initPromise;
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -116,7 +124,10 @@ export class Gateway {
         await this.circuitBreaker!.recordSuccess(ref.model);
 
         const durationMs = Date.now() - startMs;
-        const estimatedCost = estimateCost(result.modelEchoed, result.tokensUsed);
+        const estimatedCost = estimateCost(
+          result.modelEchoed,
+          result.tokensUsed,
+        );
 
         const response: GatewayResponse = {
           content: result.content,
@@ -148,7 +159,6 @@ export class Gateway {
         } satisfies GatewayLogEntry);
 
         return response;
-
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
 
@@ -181,9 +191,8 @@ export class Gateway {
         if (err instanceof TimeoutError) {
           // For timeouts: retry the same model once if we haven't already,
           // otherwise fall through to next model.
-          const alreadyRetried = attemptedChain.filter(
-            (m) => m.model === ref.model,
-          ).length > 1;
+          const alreadyRetried =
+            attemptedChain.filter((m) => m.model === ref.model).length > 1;
 
           if (!alreadyRetried && i < chain.length - 1) {
             // Insert a retry of the same model before continuing the chain
@@ -194,14 +203,20 @@ export class Gateway {
         }
 
         // Unknown error — log and try next
-        console.error(`[Gateway] Unexpected error on ${ref.model}:`, lastError.message);
+        console.error(
+          `[Gateway] Unexpected error on ${ref.model}:`,
+          lastError.message,
+        );
         continue;
       }
     }
 
     // ── All models exhausted ──────────────────────────────────────────────────
     const durationMs = Date.now() - startMs;
-    const exhaustedErr = new AllModelsExhaustedError(request.task, attemptedChain);
+    const exhaustedErr = new AllModelsExhaustedError(
+      request.task,
+      attemptedChain,
+    );
 
     this.logger.emit({
       requestId,
