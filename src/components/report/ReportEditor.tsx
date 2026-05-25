@@ -19,6 +19,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { Report, ReportSectionKey, Project } from "@/types";
+import { SectionInstructionsPanel } from "@/components/report/SectionInstructionsPanel";
+import { RegenerateButton } from "@/components/report/RegenerateModal";
+import { ReportEditorFooter, useAutosave } from "@/components/report/ReportEditorFooter";
 
 const SECTION_TITLES: Record<string, string> = Object.fromEntries(
   REPORT_SECTIONS.map((s) => [s.key, s.title]),
@@ -34,6 +37,8 @@ interface Props {
   streamingSection?: string | null;
   activeSection: ReportSectionKey;
   onSectionChange: (key: ReportSectionKey) => void;
+  sectionInstructions?: Record<string, string>;
+  onInstructionSaved?: (sectionKey: string, instruction: string) => void;
 }
 
 export function ReportEditor({
@@ -45,6 +50,8 @@ export function ReportEditor({
   streamingSection,
   activeSection,
   onSectionChange,
+  sectionInstructions,
+  onInstructionSaved,
 }: Props) {
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const editContentRef = useRef<string>("");
@@ -53,10 +60,24 @@ export function ReportEditor({
   const [previewMode, setPreviewMode] = useState(false);
   const supabase = createClient();
 
+  const { triggerAutosave, lastSaved, saving: autoSaving } = useAutosave({
+    onSave: () => saveSection(activeSection),
+    isEditing: editingSection === activeSection,
+    delay: 30_000,
+  });
+
   const section = report.sections[activeSection];
   const isStreaming = streamingSection === activeSection;
   const isEditing = editingSection === activeSection;
   const hasContent = !!section?.content;
+
+  // Calculate word and character counts
+  const contentToCount = isEditing ? editContentRef.current : (section?.content || "");
+  const wordCount = contentToCount
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const charCount = contentToCount.length;
 
   // Navigate between sections
   const currentIdx = ORDERED_KEYS.indexOf(activeSection);
@@ -163,6 +184,16 @@ export function ReportEditor({
         </div>
       </div>
 
+      {/* Section Instructions Panel */}
+      {!isStreaming && hasContent && (
+        <SectionInstructionsPanel
+          projectId={projectId}
+          sectionKey={activeSection}
+          initialValue={sectionInstructions?.[activeSection] || ""}
+          onSaved={onInstructionSaved}
+        />
+      )}
+
       {/* Content area */}
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Streaming skeleton */}
@@ -230,6 +261,7 @@ export function ReportEditor({
                     content={editContentRef.current}
                     onChange={(md) => {
                       editContentRef.current = md;
+                      triggerAutosave();
                     }}
                     projectId={projectId}
                     placeholder={`Edit ${SECTION_TITLES[activeSection] || activeSection}…`}
@@ -237,25 +269,13 @@ export function ReportEditor({
                   />
                 )}
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => saveSection(activeSection)}
-                    loading={saving}
-                  >
-                    Save changes
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditingSection(null);
-                      setPreviewMode(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
+                <ReportEditorFooter
+                  wordCount={wordCount}
+                  charCount={charCount}
+                  sectionKey={activeSection}
+                  lastSaved={lastSaved}
+                  saving={autoSaving}
+                />
               </div>
             ) : (
               <div className="flex-1 flex flex-col gap-4">
@@ -276,14 +296,33 @@ export function ReportEditor({
                   >
                     <Edit3 className="size-3.5" /> Edit
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => regenerateSection(activeSection)}
-                    loading={regenerating === activeSection}
-                  >
-                    <RefreshCw className="size-3.5" /> Regenerate
-                  </Button>
+                  <RegenerateButton
+                    sectionTitle={SECTION_TITLES[activeSection] || activeSection}
+                    onRegenerate={async (oneTimeInstructions) => {
+                      setRegenerating(activeSection);
+                      try {
+                        await fetch("/api/report/generate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            projectId,
+                            sectionsToGenerate: [activeSection],
+                            oneTimeInstructions: oneTimeInstructions
+                              ? { [activeSection]: oneTimeInstructions }
+                              : undefined,
+                          }),
+                        });
+                        const { data } = await supabase
+                          .from("reports")
+                          .select("*")
+                          .eq("project_id", projectId)
+                          .single();
+                        if (data) onUpdate(data as Report);
+                      } finally {
+                        setRegenerating(null);
+                      }
+                    }}
+                  />
                   {!section?.approved && (
                     <Button
                       size="sm"

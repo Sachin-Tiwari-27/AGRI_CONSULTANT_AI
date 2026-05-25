@@ -1,149 +1,423 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { marked, Renderer, type Tokens } from "marked";
+/**
+ * src/components/ui/markdown-renderer.tsx
+ *
+ * Renders stored markdown content in read-only preview contexts:
+ *   - ReportEditor read view
+ *   - PublicReportView
+ *   - PDF preview
+ *
+ * Handles:
+ *   - Standard markdown via react-markdown + remark-gfm
+ *   - :::chart fenced blocks → inline Recharts components
+ *   - ⬡ PLACEHOLDER: ... lines → amber placeholder badges
+ */
+
+import React, { useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { AlertTriangle } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+// ── Chart colour palette (matches ChartNode.tsx) ──────────────────────────────
+const PALETTE = [
+  "#1a5c38",
+  "#2e7d52",
+  "#4cb57a",
+  "#7dd3b0",
+  "#3b82f6",
+  "#8b5cf6",
+  "#f59e0b",
+  "#ef4444",
+];
+
+type ChartType = "bar" | "line" | "area" | "pie";
+
+interface ChartAttrs {
+  chartType: ChartType;
+  title: string;
+  data: string; // JSON string of ChartDataPoint[]
+  currency: string;
+}
+
+interface ChartDataPoint {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+// ── Inline chart component (read-only, no editing controls) ───────────────────
+function InlineChart({ attrs }: { attrs: ChartAttrs }) {
+  const data: ChartDataPoint[] = useMemo(() => {
+    try {
+      return JSON.parse(attrs.data);
+    } catch {
+      return [];
+    }
+  }, [attrs.data]);
+
+  const fmt = (v: number) =>
+    attrs.currency
+      ? `${attrs.currency} ${v.toLocaleString()}`
+      : v.toLocaleString();
+
+  const chartData = data.map((d) => ({ name: d.label, value: d.value }));
+
+  if (!data.length) return null;
+
+  const renderChart = () => {
+    switch (attrs.chartType) {
+      case "bar":
+        return (
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#64748b" }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) =>
+                attrs.currency ? `${(v / 1000).toFixed(0)}K` : String(v)
+              }
+            />
+            <Tooltip formatter={(v: any) => [fmt(Number(v)), "Value"]} />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.color || PALETTE[i % PALETTE.length]} />
+              ))}
+            </Bar>
+          </BarChart>
+        );
+
+      case "line":
+        return (
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#64748b" }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) =>
+                attrs.currency ? `${(v / 1000).toFixed(0)}K` : String(v)
+              }
+            />
+            <Tooltip formatter={(v: any) => [fmt(Number(v)), "Value"]} />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={PALETTE[0]}
+              strokeWidth={2.5}
+              dot={{ fill: PALETTE[0], r: 3 }}
+            />
+          </LineChart>
+        );
+
+      case "area":
+        return (
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="mdAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={PALETTE[0]} stopOpacity={0.2} />
+                <stop offset="95%" stopColor={PALETTE[0]} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#64748b" }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) =>
+                attrs.currency ? `${(v / 1000).toFixed(0)}K` : String(v)
+              }
+            />
+            <Tooltip formatter={(v: any) => [fmt(Number(v)), "Value"]} />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={PALETTE[0]}
+              fill="url(#mdAreaGrad)"
+              strokeWidth={2.5}
+            />
+          </AreaChart>
+        );
+
+      case "pie":
+        return (
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={85}
+              dataKey="value"
+              paddingAngle={2}
+            >
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.color || PALETTE[i % PALETTE.length]} />
+              ))}
+            </Pie>
+            <Tooltip formatter={(v: any) => fmt(Number(v))} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+          </PieChart>
+        );
+    }
+  };
+
+  return (
+    <div className="my-4 rounded-xl border border-border bg-card overflow-hidden">
+      {/* Chart title */}
+      {attrs.title && (
+        <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+          <p className="text-xs font-semibold text-foreground">{attrs.title}</p>
+        </div>
+      )}
+
+      {/* Chart */}
+      <div className="px-4 py-4">
+        <ResponsiveContainer width="100%" height={220}>
+          {renderChart() as React.ReactElement}
+        </ResponsiveContainer>
+      </div>
+
+      {/* Data table */}
+      <div className="border-t border-border">
+        <div className="grid grid-cols-2 px-4 py-1.5 bg-muted/30 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+          <span>Label</span>
+          <span className="text-right">Value</span>
+        </div>
+        {data.map((d, i) => (
+          <div
+            key={i}
+            className={`grid grid-cols-2 px-4 py-1.5 text-xs ${i !== 0 ? "border-t border-border/40" : ""}`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span
+                className="size-2 rounded-full flex-shrink-0"
+                style={{ background: d.color || PALETTE[i % PALETTE.length] }}
+              />
+              {d.label}
+            </span>
+            <span className="text-right font-medium tabular-nums">{fmt(d.value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Placeholder badge ─────────────────────────────────────────────────────────
+function PlaceholderBadge({ label }: { label: string }) {
+  return (
+    <div className="my-3 flex items-center gap-2 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+      <AlertTriangle className="size-4 text-amber-500 flex-shrink-0" />
+      <span>
+        <span className="font-semibold">PLACEHOLDER:</span> {label}
+      </span>
+    </div>
+  );
+}
+
+// ── Content splitter ──────────────────────────────────────────────────────────
+// Splits raw markdown into segments: plain markdown, chart blocks, placeholder lines.
+
+type Segment =
+  | { type: "md"; content: string }
+  | { type: "chart"; attrs: ChartAttrs }
+  | { type: "placeholder"; label: string };
+
+function splitContent(content: string): Segment[] {
+  const segments: Segment[] = [];
+
+  // Split on :::chart blocks and ⬡ PLACEHOLDER lines
+  // We process line by line to handle placeholders, then handle chart blocks
+  const chartPattern = /:::chart\n([\s\S]*?)\n:::/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = chartPattern.exec(content)) !== null) {
+    // Push text before this chart block
+    if (match.index > lastIndex) {
+      segments.push(...splitPlaceholders(content.slice(lastIndex, match.index)));
+    }
+
+    // Push chart block
+    try {
+      const attrs = JSON.parse(match[1].trim()) as ChartAttrs;
+      segments.push({ type: "chart", attrs });
+    } catch {
+      // Malformed chart JSON — render as plain text
+      segments.push({ type: "md", content: match[0] });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Push remaining text after last chart block
+  if (lastIndex < content.length) {
+    segments.push(...splitPlaceholders(content.slice(lastIndex)));
+  }
+
+  return segments;
+}
+
+function splitPlaceholders(text: string): Segment[] {
+  const segments: Segment[] = [];
+  const lines = text.split("\n");
+  let mdBuffer: string[] = [];
+
+  for (const line of lines) {
+    const placeholderMatch = line.match(/^⬡ PLACEHOLDER: (.+)$/);
+    if (placeholderMatch) {
+      if (mdBuffer.length) {
+        segments.push({ type: "md", content: mdBuffer.join("\n") });
+        mdBuffer = [];
+      }
+      segments.push({ type: "placeholder", label: placeholderMatch[1] });
+    } else {
+      mdBuffer.push(line);
+    }
+  }
+
+  if (mdBuffer.length) {
+    segments.push({ type: "md", content: mdBuffer.join("\n") });
+  }
+
+  return segments;
+}
+
+// ── Main MarkdownRenderer component ──────────────────────────────────────────
 
 interface Props {
   content: string;
   className?: string;
 }
 
-export function MarkdownRenderer({ content, className }: Props) {
-  const html = parseMarkdown(content);
+export function MarkdownRenderer({ content, className = "" }: Props) {
+  const segments = useMemo(() => splitContent(content || ""), [content]);
+
   return (
-    <div
-      className={cn(
-        "text-sm text-foreground leading-relaxed",
-        // Headings
-        "[&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mt-5 [&_h1]:mb-2",
-        "[&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mt-4 [&_h2]:mb-1.5",
-        "[&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground [&_h3]:mt-3 [&_h3]:mb-1",
-        // Body
-        "[&_p]:mb-2.5 [&_p]:leading-relaxed",
-        "[&_strong]:font-semibold [&_strong]:text-foreground",
-        "[&_em]:italic [&_em]:text-muted-foreground",
-        // Lists
-        "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ul]:mb-3",
-        "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_ol]:mb-3",
-        "[&_li]:text-foreground",
-        // Code
-        "[&_code]:bg-muted [&_code]:text-foreground [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono",
-        "[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:mb-3",
-        "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
-        // Blockquote
-        "[&_blockquote]:border-l-2 [&_blockquote]:border-brand-300 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:italic [&_blockquote]:mb-3",
-        // HR
-        "[&_hr]:border-border [&_hr]:my-4",
-        // Images
-        "[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3 [&_img]:border [&_img]:border-border",
-        // Links
-        "[&_a]:text-brand-700 [&_a]:hover:underline [&_a]:font-medium",
-        // Tables — wrapped in .table-wrapper for horizontal scroll
-        "[&_.table-wrapper]:overflow-x-auto [&_.table-wrapper]:rounded-lg [&_.table-wrapper]:border [&_.table-wrapper]:border-border [&_.table-wrapper]:mb-3",
-        "[&_table]:w-full [&_table]:border-collapse [&_table]:text-xs [&_table]:min-w-[380px]",
-        "[&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-foreground [&_th]:border-b [&_th]:border-border [&_th]:whitespace-nowrap",
-        "[&_td]:px-3 [&_td]:py-2 [&_td]:text-muted-foreground [&_td]:border-b [&_td]:border-border/50",
-        "[&_tr:last-child_td]:border-0",
-        "[&_tr:nth-child(even)_td]:bg-muted/30",
-        className,
-      )}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-function parseMarkdown(md: string): string {
-  if (!md) return "";
-
-  const renderer = new Renderer();
-
-  renderer.table = (token: Tokens.Table): string => {
-    const headerCells = token.header
-      .map((cell) => `<th>${cell.text}</th>`)
-      .join("");
-    const bodyRows = token.rows
-      .map(
-        (row) =>
-          `<tr>${row.map((cell) => `<td>${cell.text}</td>`).join("")}</tr>`,
-      )
-      .join("");
-    return `<div class="table-wrapper"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
-  };
-
-  marked.setOptions({ renderer, gfm: true, breaks: false });
-
-  try {
-    let html = marked.parse(md) as string;
-
-    // DEBUG
-    if (md.includes("chart-node") || md.includes('data-type="chart"')) {
-      console.log("[MarkdownRenderer] INPUT contains chart reference. md snippet:", md.substring(Math.max(0, md.indexOf("chart")-10), md.indexOf("chart")+80));
-      console.log("[MarkdownRenderer] AFTER marked.parse, html snippet:", html.substring(Math.max(0, html.indexOf("chart")-10), html.indexOf("chart")+80));
-    }
-
-    // Render placeholder blocks
-    html = html.replace(
-      /⬡ PLACEHOLDER: (.*?)(?=<|\n|$)/g,
-      `<div class="my-3 flex items-center gap-2 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-        <span class="text-amber-500">⬡</span>
-        <span>PLACEHOLDER: $1</span>
-      </div>`,
-    );
-
-    // Render chart-node tokens as data tables
-    // <!-- chart-node:{json} --> may be wrapped in an HTML comment tag by marked
-    html = html.replace(
-      /<!--\s*chart-node:([\s\S]*?)\s*-->/g,
-      (_match, json) => {
-        try {
-          const attrs = JSON.parse(json) as {
-            chartType: string;
-            title: string;
-            data: string;
-            currency: string;
-          };
-          const data: Array<{ label: string; value: number }> = JSON.parse(
-            attrs.data || "[]",
-          );
-          const fmt = (v: number) =>
-            attrs.currency
-              ? `${attrs.currency} ${v.toLocaleString()}`
-              : v.toLocaleString();
-
-          const rows = data
-            .map(
-              (d) =>
-                `<tr>
-                  <td style="padding:6px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${d.label}</td>
-                  <td style="padding:6px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#111827;font-weight:600;text-align:right;font-variant-numeric:tabular-nums">${fmt(d.value)}</td>
-                </tr>`,
-            )
-            .join("");
-
-          return `<div style="margin:16px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
-              <span style="font-size:13px;font-weight:600;color:#1a1a1a">${attrs.title || "Chart"}</span>
-              <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;background:#e2e8f0;border-radius:4px;padding:2px 7px">${attrs.chartType || "bar"}</span>
-            </div>
-            <table style="width:100%;border-collapse:collapse">
-              <thead>
-                <tr style="background:#f1f5f9">
-                  <th style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;text-align:left">Label</th>
-                  <th style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;text-align:right">Value</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>`;
-        } catch {
-          return ""; // malformed token — drop silently
+    <div className={className}>
+      {segments.map((segment, i) => {
+        if (segment.type === "chart") {
+          return <InlineChart key={i} attrs={segment.attrs} />;
         }
-      },
-    );
 
-    return html;
-  } catch (err) {
-    console.error("Markdown parse error:", err);
-    return md;
-  }
+        if (segment.type === "placeholder") {
+          return <PlaceholderBadge key={i} label={segment.label} />;
+        }
+
+        // Plain markdown
+        if (!segment.content.trim()) return null;
+
+        return (
+          <ReactMarkdown
+            key={i}
+            remarkPlugins={[remarkGfm]}
+            components={{
+              // Tables
+              table: ({ children }) => (
+                <div className="overflow-x-auto my-4">
+                  <table className="w-full border-collapse text-sm">{children}</table>
+                </div>
+              ),
+              thead: ({ children }) => (
+                <thead className="bg-muted/50">{children}</thead>
+              ),
+              th: ({ children }) => (
+                <th className="border border-border px-3 py-2 text-left font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="border border-border px-3 py-2 text-sm">{children}</td>
+              ),
+              // Headings
+              h1: ({ children }) => (
+                <h1 className="text-2xl font-bold text-foreground mt-8 mb-4 first:mt-0">
+                  {children}
+                </h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-xl font-bold text-foreground mt-6 mb-3 first:mt-0">
+                  {children}
+                </h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-base font-semibold text-foreground mt-5 mb-2">
+                  {children}
+                </h3>
+              ),
+              // Paragraphs
+              p: ({ children }) => (
+                <p className="text-sm leading-relaxed text-foreground mb-3">{children}</p>
+              ),
+              // Lists
+              ul: ({ children }) => (
+                <ul className="list-disc list-outside ml-5 mb-3 space-y-1">{children}</ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="list-decimal list-outside ml-5 mb-3 space-y-1">{children}</ol>
+              ),
+              li: ({ children }) => (
+                <li className="text-sm leading-relaxed text-foreground">{children}</li>
+              ),
+              // Inline
+              strong: ({ children }) => (
+                <strong className="font-semibold text-foreground">{children}</strong>
+              ),
+              em: ({ children }) => (
+                <em className="italic text-foreground">{children}</em>
+              ),
+              code: ({ children, className }) => {
+                const isBlock = className?.includes("language-");
+                if (isBlock) {
+                  return (
+                    <pre className="bg-muted rounded-lg px-4 py-3 overflow-x-auto my-3">
+                      <code className="text-xs font-mono">{children}</code>
+                    </pre>
+                  );
+                }
+                return (
+                  <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
+                    {children}
+                  </code>
+                );
+              },
+              // Blockquote
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-brand-300 pl-4 italic text-muted-foreground my-3">
+                  {children}
+                </blockquote>
+              ),
+              // Horizontal rule
+              hr: () => <hr className="border-border my-6" />,
+            }}
+          >
+            {segment.content}
+          </ReactMarkdown>
+        );
+      })}
+    </div>
+  );
 }

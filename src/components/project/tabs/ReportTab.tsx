@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -9,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { ReportEditor } from "@/components/report/ReportEditor";
 import { PaymentGateModal } from "@/components/report/PaymentGateModal";
+import { ReportPublishBar } from "@/components/report/ReportPublishBar";
+import { ReportSidebarSection } from "@/components/report/ReportSidebarSection";
 import { createClient } from "@/lib/supabase/client";
 import {
   REPORT_SECTIONS,
@@ -68,6 +70,9 @@ export function ReportTab({
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sectionInstructions, setSectionInstructions] = useState<Record<string, string>>(
+    (project as any).section_instructions || {},
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const currency = (project as any).currency || "USD";
@@ -94,6 +99,30 @@ export function ReportTab({
       : 0;
 
   const previewUrl = `/project/${project.id}/report`;
+
+  // Fetch and sync section instructions
+  useEffect(() => {
+    fetch(`/api/report/instructions?projectId=${project.id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.section_instructions) {
+          setSectionInstructions(data.section_instructions);
+        }
+      })
+      .catch(() => {});
+  }, [project.id]);
+
+  const handleInstructionSaved = useCallback(
+    (sectionKey: string, instruction: string) => {
+      setSectionInstructions((prev) => {
+        const next = { ...prev };
+        if (instruction) next[sectionKey] = instruction;
+        else delete next[sectionKey];
+        return next;
+      });
+    },
+    [],
+  );
 
   /* ── Auto-select first section when report loads ─────────────── */
   const prevReportRef = useRef<string | null>(null);
@@ -439,165 +468,14 @@ export function ReportTab({
       <div className="flex gap-5 min-h-[calc(100vh-160px)]">
         {/* ── LEFT: Section sidebar ─────────────────────────────── */}
         <div className="w-64 flex-shrink-0 flex flex-col gap-3">
-          {/* Publish status card */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-            {/* Progress */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-muted-foreground">
-                  {approvedCount} / {sectionKeys.length} approved
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {generatedCount} generated
-                </span>
-              </div>
-              <Progress
-                value={
-                  allApproved
-                    ? 100
-                    : Math.round(
-                        (approvedCount / Math.max(sectionKeys.length, 1)) * 100,
-                      )
-                }
-              />
-            </div>
-
-            <Separator />
-
-            {/* Actions */}
-            <div className="space-y-1.5">
-              {isPublished ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => window.open(previewUrl, "_blank")}
-                  >
-                    <Eye className="size-3.5 mr-2" /> Preview Report
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={resendNotification}
-                    loading={saving}
-                  >
-                    <Send className="size-3.5 mr-2" /> Resend email
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={downloadPdf}
-                    loading={downloading}
-                  >
-                    <Download className="size-3.5 mr-2" /> Download PDF
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="w-full justify-start"
-                    onClick={handlePublishClick}
-                    loading={saving}
-                  >
-                    <RefreshCw className="size-3.5 mr-2" /> Republish
-                  </Button>
-                  {reportPrice > 0 && !isCompleted && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="w-full justify-start"
-                      onClick={() => setShowMarkPaid((v) => !v)}
-                    >
-                      Mark as paid
-                    </Button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full justify-start mb-1.5"
-                    onClick={() => window.open(previewUrl, "_blank")}
-                  >
-                    <Eye className="size-3.5 mr-2" /> Preview Report
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={handlePublishClick}
-                    disabled={!allApproved}
-                    loading={saving}
-                  >
-                    <Lock className="size-3.5 mr-2" /> Publish report
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => generateStreaming()}
-                    loading={isStreaming}
-                    disabled={isStreaming}
-                  >
-                    <RefreshCw className="size-3.5 mr-2" /> Regenerate all
-                  </Button>
-                </>
-              )}
-            </div>
-
-            {/* Mark paid form */}
-            {showMarkPaid && (
-              <div className="pt-2 border-t border-border space-y-2">
-                <input
-                  type="text"
-                  value={markPaidNote}
-                  onChange={(e) => setMarkPaidNote(e.target.value)}
-                  placeholder="Collection note (optional)"
-                  className="w-full h-8 px-2.5 text-xs rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <div className="flex gap-1.5">
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={handleMarkPaid}
-                    loading={markingPaid}
-                  >
-                    Confirm
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowMarkPaid(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Not approved warning */}
-            {!allApproved && !isPublished && sectionKeys.length > 0 && (
-              <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                <AlertCircle className="size-3.5 flex-shrink-0 mt-0.5" />
-                Approve all sections to publish
-              </div>
-            )}
-
-            {/* Status badge */}
-            {isPublished && (
-              <div className="flex items-center gap-1.5 text-[11px] text-brand-700">
-                <Lock className="size-3.5" />
-                Published
-                {paymentCollected && (
-                  <Badge variant="green" className="ml-auto">
-                    Paid
-                  </Badge>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Publish status bar */}
+          <ReportPublishBar
+            report={displayReport}
+            project={project}
+            totalSections={17}
+            publishing={saving}
+            onPublish={handlePublishClick}
+          />
 
           {/* Section list */}
           <div className="rounded-xl border border-border bg-card overflow-hidden flex-1">
@@ -608,46 +486,18 @@ export function ReportTab({
             </div>
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-1">
-                {ORDERED_KEYS.map((key) => {
-                  const section = displayReport?.sections[key];
-                  const isActive = activeSection === key;
-                  const isStream = streamingSection === key;
-                  const isDone = !!section?.content;
-                  const isApproved = section?.approved;
-
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setActiveSection(key)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors mb-0.5 ${
-                        isActive
-                          ? "bg-brand-50 text-brand-800"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {/* Status dot */}
-                      <div className="flex-shrink-0">
-                        {isApproved ? (
-                          <CheckCircle className="size-3.5 text-brand-600" />
-                        ) : isStream ? (
-                          <Loader2 className="size-3.5 animate-spin text-brand-500" />
-                        ) : isDone ? (
-                          <div className="size-3.5 rounded-full border-2 border-brand-400" />
-                        ) : (
-                          <div className="size-3.5 rounded-full border-2 border-border" />
-                        )}
-                      </div>
-
-                      <span className="text-[11px] font-medium flex-1 truncate leading-snug">
-                        {SECTION_TITLES[key] || key}
-                      </span>
-
-                      {isActive && (
-                        <ChevronRight className="size-3 flex-shrink-0 text-brand-600" />
-                      )}
-                    </button>
-                  );
-                })}
+                {ORDERED_KEYS.map((key) => (
+                  <ReportSidebarSection
+                    key={key}
+                    sectionKey={key}
+                    title={SECTION_TITLES[key] || key}
+                    section={displayReport?.sections[key]}
+                    isActive={activeSection === key}
+                    isStreaming={streamingSection === key}
+                    hasInstruction={!!(sectionInstructions?.[key])}
+                    onClick={() => setActiveSection(key as ReportSectionKey)}
+                  />
+                ))}
 
                 {/* Appendices divider */}
                 <div className="px-3 pt-3 pb-1">
@@ -703,6 +553,8 @@ export function ReportTab({
               streamingSection={streamingSection}
               activeSection={activeSection}
               onSectionChange={setActiveSection}
+              sectionInstructions={sectionInstructions}
+              onInstructionSaved={handleInstructionSaved}
             />
           ) : (
             <div className="h-full flex items-center justify-center">
