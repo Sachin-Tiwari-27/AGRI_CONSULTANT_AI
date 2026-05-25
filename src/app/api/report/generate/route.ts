@@ -29,6 +29,24 @@ function resolveCurrency(project: Record<string, unknown>): string {
   );
 }
 
+// ── Build consultant instructions block for AI prompts ─────────────────
+function buildInstructionsBlock(
+  persistent?: string,
+  oneTime?: string,
+): string {
+  const parts: string[] = [];
+  if (persistent?.trim()) {
+    parts.push("**Consultant's standing instructions for this section:**");
+    parts.push(persistent.trim());
+  }
+  if (oneTime?.trim()) {
+    parts.push("**One-time instructions for this regeneration:**");
+    parts.push(oneTime.trim());
+  }
+  if (!parts.length) return "";
+  return ["---", ...parts, "Apply the above instructions carefully. They override the structural guidance where they conflict.", "---"].join("\n");
+}
+
 // ── SSE helpers ────────────────────────────────────────────────────────
 function createSSEStream() {
   const encoder = new TextEncoder();
@@ -209,7 +227,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const body = await req.json();
-  const { projectId, sectionsToGenerate, stream: useStream = false } = body;
+  const { projectId, sectionsToGenerate, stream: useStream = false, oneTimeInstructions } = body;
 
   const { data: project } = await supabase
     .from('projects')
@@ -269,6 +287,7 @@ export async function POST(req: NextRequest) {
       projectId,
       send,
       close,
+      oneTimeInstructions: oneTimeInstructions || {},
     }).catch((err) => {
       console.error("[ReportGen-PR6] Fatal:", err);
       send({ type: "error", error: err.message });
@@ -298,6 +317,7 @@ export async function POST(req: NextRequest) {
     projectId,
     send: () => {},
     close: () => {},
+    oneTimeInstructions: oneTimeInstructions || {},
   });
   return NextResponse.json({ success: true, sections: result.generatedKeys });
 }
@@ -316,6 +336,7 @@ async function runFullPipeline({
   projectId,
   send,
   close,
+  oneTimeInstructions,
 }: any) {
   const { data: consultantNotes } = await supabase
     .from("consultant_notes")
@@ -332,6 +353,9 @@ async function runFullPipeline({
         )
         .join("\n\n")
     : "No additional consultant research notes provided.";
+
+  const sectionInstructions: Record<string, string> =
+    (project as any).section_instructions || {};
 
   // ── Phase 0: Context gathering (parallel) ──────────────────────────
   send({
@@ -514,6 +538,9 @@ async function runFullPipeline({
           allAnswers,
           "technical_analysis",
         ),
+        consultant_instructions: buildInstructionsBlock(
+          sectionInstructions["technical_analysis"],
+        ),
       },
       maxTokens: 1500,
     });
@@ -549,6 +576,10 @@ async function runFullPipeline({
           allAnswers,
           sc.aiTask as AITask,
           1200,
+        ),
+        consultant_instructions: buildInstructionsBlock(
+          sectionInstructions[sc.key],
+          oneTimeInstructions?.[sc.key],
         ),
       };
 
@@ -646,6 +677,9 @@ async function runFullPipeline({
           market_analysis_content:
             baseVars.market_analysis_content ||
             trimContext(marketResearch, 600),
+          consultant_instructions: buildInstructionsBlock(
+            sectionInstructions["executive_summary"],
+          ),
         },
         maxTokens: execConfig.maxTokens,
       });
