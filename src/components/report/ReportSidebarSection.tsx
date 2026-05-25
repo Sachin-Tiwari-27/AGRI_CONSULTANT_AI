@@ -107,13 +107,13 @@ export function ReportSidebarSection({
     <button
       onClick={onClick}
       className={cn(
-        "w-full text-left px-3 py-2.5 rounded-lg transition-colors group",
+        "w-full min-h-18 text-left rounded-xl border bg-card px-3 py-3 transition-colors duration-150",
         isActive
-          ? "bg-brand-50 border border-brand-200"
-          : "hover:bg-muted/60 border border-transparent",
+          ? "border-brand-200 bg-brand-50 shadow-sm"
+          : "border-border hover:border-brand-200 hover:bg-brand-50",
       )}
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-3">
         {/* Status icon */}
         <div className="mt-0.5 flex-shrink-0">
           {isStreaming ? (
@@ -130,12 +130,11 @@ export function ReportSidebarSection({
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Title row */}
-          <div className="flex items-center gap-1.5">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2 justify-between">
             <span
               className={cn(
-                "text-xs font-medium leading-snug truncate",
+                "text-xs font-semibold leading-snug truncate",
                 isActive ? "text-brand-800" : "text-foreground",
                 !hasContent && "text-muted-foreground",
               )}
@@ -146,29 +145,27 @@ export function ReportSidebarSection({
             {/* Consultant instruction dot */}
             {hasInstruction && (
               <span
-                className="size-1.5 rounded-full bg-violet-500 flex-shrink-0"
+                className="size-1.5 rounded-full bg-violet-500"
                 title="Has consultant instructions"
               />
             )}
           </div>
 
-          {/* Preview text — fix 3a */}
-          {preview && (
-            <p className="text-[10px] text-muted-foreground/70 leading-snug mt-0.5 truncate">
+          {preview ? (
+            <p className="text-[10px] text-muted-foreground/70 leading-snug line-clamp-2">
               {preview}
             </p>
+          ) : (
+            <div className="h-4" />
           )}
 
-          {/* Meta row: word count + placeholder chips */}
           {hasContent && (
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
               {wordCount > 0 && (
-                <span className="text-[9px] text-muted-foreground/60 tabular-nums">
-                  {wordCount}w
-                </span>
+                <span className="tabular-nums">{wordCount}w</span>
               )}
               {placeholderCount > 0 && (
-                <span className="flex items-center gap-0.5 text-[9px] text-amber-600 font-medium">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-amber-700">
                   <AlertTriangle className="size-2.5" />
                   {placeholderCount}
                 </span>

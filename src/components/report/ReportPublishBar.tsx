@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   CheckCircle,
   AlertTriangle,
@@ -127,94 +128,76 @@ export function ReportPublishBar({
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
       {/* Main bar */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        {/* Score ring */}
-        <div className="relative size-10 flex-shrink-0">
-          <svg className="size-10 -rotate-90" viewBox="0 0 36 36">
-            <circle
-              cx="18"
-              cy="18"
-              r="15"
-              fill="none"
-              stroke="#f1f5f9"
-              strokeWidth="3"
-            />
-            <circle
-              cx="18"
-              cy="18"
-              r="15"
-              fill="none"
-              stroke={pct === 100 ? "#1a5c38" : pct >= 66 ? "#f59e0b" : "#ef4444"}
-              strokeWidth="3"
-              strokeDasharray={`${(pct / 100) * 94.2} 94.2`}
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-foreground">
-            {score}/{total}
-          </span>
+      <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="relative size-10 shrink-0">
+            <svg className="size-10 -rotate-90" viewBox="0 0 36 36">
+              <circle
+                cx="18"
+                cy="18"
+                r="15"
+                fill="none"
+                stroke="#f1f5f9"
+                strokeWidth="3"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r="15"
+                fill="none"
+                stroke={pct === 100 ? "#1a5c38" : pct >= 66 ? "#f59e0b" : "#ef4444"}
+                strokeWidth="3"
+                strokeDasharray={`${(pct / 100) * 94.2} 94.2`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-foreground">
+              {score}/{total}
+            </span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">
+              {score === total
+                ? "Ready to publish"
+                : `${score} of ${total} checks passed`}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1 truncate">
+              {score === total
+                ? "All checks passed — publish when ready"
+                : allCriticalPassed
+                ? "Critical checks passed — warnings remain"
+                : "Resolve errors before publishing"}
+            </p>
+          </div>
         </div>
 
-        {/* Label */}
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-foreground">
-            {score === total
-              ? "Ready to publish"
-              : `${score} of ${total} checks passed`}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            {score === total
-              ? "All checks passed — publish when ready"
-              : allCriticalPassed
-              ? "Critical checks passed — warnings remain"
-              : "Resolve errors before publishing"}
-          </p>
-        </div>
-
-        {/* Badges */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Placeholder count badge */}
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           {placeholderCount > 0 && (
-            <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold border border-amber-200">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-700 border border-amber-200">
               <AlertTriangle className="size-3" />
               {placeholderCount} placeholder{placeholderCount !== 1 ? "s" : ""}
             </span>
           )}
 
-          {/* Financial model override badge */}
           {hasOverride && (
-            <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold border border-blue-200">
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-semibold text-blue-700 border border-blue-200">
               <Edit3 className="size-3" />
               Manual model
             </span>
           )}
 
-          {/* Checklist toggle */}
-          <button
-            onClick={() => setChecklistOpen((v) => !v)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-[11px] text-muted-foreground hover:bg-muted transition-colors"
-          >
-            {checklistOpen ? (
-              <ChevronUp className="size-3.5" />
-            ) : (
-              <ChevronDown className="size-3.5" />
-            )}
+          <Button variant="secondary" size="sm" onClick={() => setChecklistOpen((v) => !v)} className="gap-1">
+            {checklistOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
             Checklist
-          </button>
+          </Button>
 
-          {/* Publish button */}
-          <button
+          <Button
             onClick={onPublish}
             disabled={publishing || !allCriticalPassed}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors",
-              isPublished
-                ? "bg-blue-600 text-white hover:bg-blue-500"
-                : allCriticalPassed
-                ? "bg-brand-700 text-white hover:bg-brand-600"
-                : "bg-muted text-muted-foreground cursor-not-allowed",
-              publishing && "opacity-60 cursor-not-allowed",
-            )}
+            size="sm"
+            variant={isPublished ? "secondary" : "default"}
+            className={cn("gap-2", publishing && "opacity-70")}
+            loading={publishing}
           >
             {isPublished ? (
               <>
@@ -227,14 +210,14 @@ export function ReportPublishBar({
                 {publishing ? "Publishing…" : "Publish report"}
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Financial model override alert */}
       {hasOverride && (
         <div className="mx-4 mb-3 flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-50 border border-blue-200">
-          <Edit3 className="size-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <Edit3 className="size-3.5 text-blue-600 shrink-0 mt-0.5" />
           <p className="text-[11px] text-blue-700 leading-relaxed">
             <span className="font-semibold">Consultant financial model active.</span>{" "}
             The AI-generated figures have been replaced with your manually entered model.
@@ -249,13 +232,13 @@ export function ReportPublishBar({
           {checks.map((check, i) => (
             <div key={i} className="flex items-center gap-2.5">
               {check.done ? (
-                <CheckCircle className="size-4 text-brand-600 flex-shrink-0" />
+                <CheckCircle className="size-4 text-brand-600 shrink-0" />
               ) : check.severity === "error" ? (
-                <XCircle className="size-4 text-destructive flex-shrink-0" />
+                <XCircle className="size-4 text-destructive shrink-0" />
               ) : check.severity === "warning" ? (
-                <AlertTriangle className="size-4 text-amber-500 flex-shrink-0" />
+                <AlertTriangle className="size-4 text-amber-500 shrink-0" />
               ) : (
-                <FileText className="size-4 text-muted-foreground flex-shrink-0" />
+                <FileText className="size-4 text-muted-foreground shrink-0" />
               )}
               <span
                 className={cn(
