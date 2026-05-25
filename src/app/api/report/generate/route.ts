@@ -212,9 +212,9 @@ export async function POST(req: NextRequest) {
   const { projectId, sectionsToGenerate, stream: useStream = false } = body;
 
   const { data: project } = await supabase
-    .from("projects")
-    .select("*, financial_model_override, financial_model_notes")
-    .eq("id", projectId)
+    .from('projects')
+    .select('*, financial_model_override, financial_model_notes, section_instructions')
+    .eq('id', projectId)
     .single();
 
   if (!project || project.consultant_id !== user.id) {
