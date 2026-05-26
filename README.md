@@ -1,84 +1,109 @@
-# 🌾 Agri Consultant AI Platform
 
-Agri Consultant AI is a sophisticated platform designed for premium agricultural consultancy. It synthesizes complex land data into actionable feasibility reports, leveraging advanced AI, real-time data integration, and a sleek "No-Line" design aesthetic.
+# Agri Consultant AI — Internal README
 
-## ✨ Core Features
+This document is the internal, developer-focused README for the Agri Consultant AI repository. It provides the essential information engineers need to get productive: architecture, dev setup, common commands, repository conventions, and pointers to important files.
 
-- **🛡️ Digital Estate Briefing**: High-fidelity intelligence interface for synthesized estate analysis.
-- **📄 AI-Powered Feasibility Reports**: Automatic generation of comprehensive reports in PDF and Word formats.
-- **📊 Interactive Questionnaires**: Multi-stage data collection tools for precision agriculture insights.
-- **🛠️ Project Management**: A two-column Case Detail system for tracking estates throughout the consultancy lifecycle.
-- **🗓️ Smart Integration**: Seamless Google Calendar and Meet scheduling for client consultations.
-- **💳 Premium Billing**: Integrated Stripe payments for exclusive consultancy tiers.
-- **⚡ Real-time Updates**: Powered by Supabase for instantaneous data synchronization.
+**Status**: Active development
 
-## 🛠️ Technology Stack
+**Audience**: Internal engineering team, SRE, and DevOps
 
-- **Framework**: [Next.js 16.2+](https://nextjs.org/) (App Router)
-- **Language**: [TypeScript](https://www.typescriptlang.org/)
-- **Core**: [React 19.2+](https://react.dev/)
-- **State Management**: [Zustand](https://zustand-demo.pmnd.rs/) & [TanStack Query](https://tanstack.com/query/latest)
-- **Database / Auth**: [Supabase](https://supabase.com/)
-- **UI Components**: [Radix UI](https://www.radix-ui.com/) & [shadcn/ui](https://ui.shadcn.com/)
-- **Styling**: [Tailwind CSS 4.0](https://tailwindcss.com/)
-- **AI Integration**: [OpenRouter](https://openrouter.ai/) / [Anthropic](https://www.anthropic.com/)
-- **Payments**: [Stripe](https://stripe.com/)
-- **Emails**: [Resend](https://resend.com/)
+**Quick links**
+- **Code**: [src](src)
+- **App router & API**: [src/app](src/app)
+- **Components**: [src/components](src/components)
+- **Migrations**: [supabase](supabase)
+- **Package manifest**: [package.json](package.json)
 
-## 🚀 Getting Started
+**Table of contents**
+- **Purpose & high-level architecture**
+- **Local development (quick start)**
+- **Environment variables**
+- **Database & migrations**
+- **Testing & linting**
+- **Deployment & releases**
+- **Repository conventions**
+- **Who to contact**
 
-### 1. Prerequisites
+**Purpose & high-level architecture**
+- Purpose: Turn client-provided estate data into actionable feasibility reports and support consultant workflows.
+- Architecture: Next.js (App Router) frontend + Supabase for realtime DB/auth, server-side APIs in [src/app/api](src/app/api), and third-party integrations (Stripe, Resend, OpenRouter/Anthropic).
 
-- Node.js 20.x or higher
-- npm or pnpm
-- A Supabase project
-
-### 2. Installation
+**Local development (quick start)**
+1. Install
 
 ```bash
-git clone https://github.com/your-org/agri-ai.git
-cd agri-ai
+git clone <repo-url>
+cd AGRI-CONSULTANT-AI
 npm install
 ```
 
-### 3. Environment Setup
-
-Copy `.env.local.example` to `.env.local` and fill in your credentials:
+2. Copy env file
 
 ```bash
 cp .env.local.example .env.local
+# then edit .env.local
 ```
 
-Key requirements:
-
-- **Supabase**: URL and Anon/Service Role keys.
-- **AI**: OpenRouter or Anthropic API keys.
-- **Stripe**: Secret and Publishable keys for payments.
-- **Tavily**: For AI-driven market research features.
-
-### 4. Development
+3. Run dev server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the platform.
+Open http://localhost:3000 after the server starts.
 
-## 📁 Project Structure
+**Environment variables**
+- The project expects `.env.local` to be populated from `.env.local.example`.
+- Most-critical vars: **Supabase** (URL, ANON/SERVICE role), **AI** keys (OpenRouter/Anthropic), **Stripe** keys, **RESEND** key.
+- Keep secrets out of source control.
 
-- `src/app`: Next.js App Router pages and API routes.
-- `src/components`: UI building blocks (Auth, Project, Report, Questionnaire).
-- `src/hooks`: Custom React hooks for data fetching and state.
-- `src/lib`: Core utilities and API clients (Stripe, Resend, AI).
-- `supabase`: Database migrations and configuration.
+**Database & migrations**
+- Migrations and schema live under [supabase](supabase). Use the Supabase CLI or dashboard to run/inspect migrations.
+- Common commands (using Supabase CLI):
 
-## 📜 Commands
+```bash
+# apply migrations
+supabase db push
 
-- `npm run dev`: Start development server.
-- `npm run build`: Build for production.
-- `npm run start`: Start production server.
-- `npm run lint`: Run ESLint.
+# open local Supabase Studio
+supabase start
+```
+
+Refer to the SQL files in [supabase/Migrations](supabase/Migrations) for migration history and notes.
+
+**Testing & linting**
+- Linting: `npm run lint`
+- Unit/integration tests: (project-specific test commands if present) — add here once test suite is available.
+
+**Deployment & releases**
+- Primary host: Vercel. Production deploys are driven by the main branch.
+- Environment configuration for staging/production is managed in the Vercel dashboard and/or CI.
+
+**Repository conventions**
+- Branching: `main` for prod, `develop` or feature branches for active work.
+- Commits: follow conventional commits where practical (`fix:`, `feat:`, `chore:`).
+- Pull requests: include a short description, link to design/ticket, and list of manual testing steps.
+
+**Important files & folders**
+- App and API routes: [src/app](src/app)
+- UI components: [src/components](src/components)
+- Lib utilities and integrations: [src/lib](src/lib)
+- Supabase migrations: [supabase/Migrations](supabase/Migrations)
+- Next config: [next.config.ts](next.config.ts)
+
+**On-call / troubleshooting**
+- Check logs in Vercel for runtime errors.
+- For DB issues, inspect Supabase logs and migration history.
+
+**Who to contact**
+- Code owner / main point of contact: (add name or team here)
+- For infra: (add SRE/infra contact)
+
+If you'd like, I can:
+- add missing env var examples to `.env.local.example`
+- add a short CONTRIBUTING.md describing PR checklist and tests
+- create a basic developer runbook for common tasks
 
 ---
+Last updated: 2026-05-26
 
-Built for the future of sustainable and intelligent agriculture. 🌍✨
