@@ -414,3 +414,14 @@ export interface Notification {
   read: boolean;
   created_at: string;
 }
+
+// ── Re-export report format types ─────────────────────────────────────────────
+export type {
+  ReportFormat,
+  ReportFormatSection,
+  SectionType,
+  GenerationPhase,
+  DocxImportPendingSection,
+  PromptGenerationRequest,
+  PromptGenerationResponse,
+} from "./report-format";
