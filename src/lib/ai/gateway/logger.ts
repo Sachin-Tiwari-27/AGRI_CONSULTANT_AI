@@ -22,16 +22,16 @@ export interface LoggerPlugin {
 export class ConsoleLoggerPlugin implements LoggerPlugin {
   async log(entry: GatewayLogEntry): Promise<void> {
     const line = {
-      ts:         entry.timestamp.toISOString(),
-      requestId:  entry.requestId,
-      task:       entry.task,
-      intended:   entry.modelIntended,
-      used:       entry.modelUsed,
-      degraded:   entry.degraded,
-      tokens:     entry.tokensUsed,
-      costUsd:    entry.estimatedCostUsd.toFixed(6),
+      ts: entry.timestamp.toISOString(),
+      requestId: entry.requestId,
+      task: entry.task,
+      intended: entry.modelIntended,
+      used: entry.modelUsed,
+      degraded: entry.degraded,
+      tokens: entry.tokensUsed,
+      costUsd: entry.estimatedCostUsd.toFixed(6),
       durationMs: entry.durationMs,
-      cacheHit:   entry.cacheHit,
+      cacheHit: entry.cacheHit,
       ...(entry.errorType ? { error: entry.errorType } : {}),
     };
 
@@ -41,10 +41,10 @@ export class ConsoleLoggerPlugin implements LoggerPlugin {
     } else {
       // Human-readable in development
       const degradedFlag = entry.degraded ? " ⚠ DEGRADED" : "";
-      const cacheFlag    = entry.cacheHit  ? " (cache)" : "";
+      const cacheFlag = entry.cacheHit ? " (cache)" : "";
       console.log(
         `[Gateway] ${entry.task} → ${entry.modelUsed}${degradedFlag}${cacheFlag}` +
-        ` | ${entry.tokensUsed} tok | ${entry.durationMs}ms | $${line.costUsd}`,
+          ` | ${entry.tokensUsed} tok | ${entry.durationMs}ms | $${line.costUsd}`,
       );
     }
   }
@@ -56,33 +56,85 @@ export class ConsoleLoggerPlugin implements LoggerPlugin {
 // from server-side routes without RLS blocking it.
 // Requires the migration in PR4 to have been applied.
 
-export class SupabaseLoggerPlugin implements LoggerPlugin {
+export class SupabaseLoggerPlugin {
   async log(entry: GatewayLogEntry): Promise<void> {
-    try {
-      // Dynamic import keeps Supabase out of the gateway's core bundle —
-      // projects that don't use Supabase simply don't import this plugin.
-      const { createServiceClient } = await import("@/lib/supabase/server");
-      const supabase = await createServiceClient();
+    // Skip logging if we're in a test environment
+    if (process.env.NODE_ENV === "test") return;
 
-      await supabase.from("ai_usage_log").insert({
-        request_id:          entry.requestId,
-        task:                entry.task,
-        model_intended:      entry.modelIntended,
-        model:               entry.modelUsed,       // existing column
-        provider:            entry.providerUsed,    // existing column
-        degraded:            entry.degraded,
-        fallback_chain:      entry.fallbackChain,
-        tokens_used:         entry.tokensUsed,      // existing column
-        estimated_cost_usd:  entry.estimatedCostUsd,
-        duration_ms:         entry.durationMs,      // existing column
-        cache_hit:           entry.cacheHit,
-        error_type:          entry.errorType ?? null,
-        project_id:          entry.projectId ?? null,
-        consultant_id:       entry.consultantId ?? null,
+    try {
+      const supabase = await this.getClient();
+      if (!supabase) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            "[Gateway Logger] No Supabase client available — skipping usage log",
+          );
+        }
+        return;
+      }
+
+      const { error } = await supabase.from("ai_usage_log").insert({
+        request_id: entry.requestId,
+        task: entry.task,
+        model_intended: entry.modelIntended,
+        model: entry.modelUsed,
+        provider: entry.providerUsed,
+        degraded: entry.degraded,
+        fallback_chain: entry.fallbackChain,
+        tokens_used: entry.tokensUsed,
+        estimated_cost_usd: entry.estimatedCostUsd,
+        duration_ms: entry.durationMs,
+        cache_hit: entry.cacheHit,
+        error_type: entry.errorType ?? null,
+        project_id: entry.projectId ?? null,
+        consultant_id: entry.consultantId ?? null,
       });
+
+      if (error) {
+        // Log in development but never throw
+        if (process.env.NODE_ENV === "development") {
+          console.error(
+            "[Gateway Logger] Insert failed:",
+            error.message,
+            error.code,
+          );
+          console.error(
+            "[Gateway Logger] Hint: Run the 20260526_report_formats.sql migration to add INSERT policies",
+          );
+        }
+      }
     } catch (err) {
-      // Never let a logger failure bubble up to the caller
-      console.error("[Gateway] Supabase logger failed:", (err as Error).message);
+      // Never let logger failure propagate
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "[Gateway Logger] Unexpected error:",
+          (err as Error).message,
+        );
+      }
+    }
+  }
+
+  private async getClient() {
+    // Try service client first (bypasses RLS)
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    if (!supabaseUrl) return null;
+
+    if (serviceKey) {
+      try {
+        const { createServiceClient } = await import("@/lib/supabase/server");
+        return await createServiceClient();
+      } catch {
+        // Service client unavailable (e.g. not in Next.js request context)
+      }
+    }
+
+    // Fall back to regular server client
+    try {
+      const { createClient } = await import("@/lib/supabase/server");
+      return await createClient();
+    } catch {
+      return null;
     }
   }
 }
