@@ -26,18 +26,12 @@ import {
   serialiseAnswersForPrompt,
 } from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
-import {
-  REPORT_SECTIONS,
-  REPORT_APPENDICES,
-  getSectionsByPhase,
-  CONTEXT_SECTION_KEYS,
-} from "@/lib/report-section-config";
 import { gateway } from "@/lib/ai/gateway";
 import type { ReportSectionKey, FinancialModel, AITask } from "@/types";
 import type { ReportFormat, ReportFormatSection } from "@/types/report-format";
 import { DEFAULT_FORMAT_SECTIONS } from "@/lib/report-format-defaults";
 
-// ── Helpers (unchanged from original) ────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 function resolveCurrency(project: Record<string, unknown>): string {
   return (
@@ -87,47 +81,132 @@ function createSSEStream() {
   return { stream, send, close };
 }
 
-// ── NEW: Resolve prompt for a format section ──────────────────────────────────
-// Returns { prompt, taskKey } — taskKey is used for answer trimming.
-// Returns null if the section cannot be generated (no prompt available).
+// ── FIX 1: Extracted section generator ───────────────────────────────────────
+// Previously the generate-section logic was inlined in a lambda inside the
+// phase loop. Extracting it:
+//   a) Removes 60+ lines of duplication between the phase loop and exec summary
+//   b) Lets phase-6a custom sections reuse the same path cleanly
+//   c) Keeps the phase loop readable
 
-function resolvePromptForSection(
-  section: ReportFormatSection,
-  baseVars: Record<string, string>,
-  sectionInstructions: Record<string, string>,
-  oneTimeInstructions: Record<string, string>,
-): { prompt: string; taskKey: string } | null {
-  const consultantInstructions = buildInstructionsBlock(
-    sectionInstructions[section.key],
-    oneTimeInstructions[section.key],
-  );
-  const varsWithInstructions = {
+interface GenerateSectionCtx {
+  baseVars: Record<string, string>;
+  sectionInstructions: Record<string, string>;
+  oneTimeInstructions: Record<string, string>;
+  allAnswers: Record<string, unknown>;
+  sections: Record<string, unknown>;
+  generatedKeys: string[];
+  projectId: string;
+  supabase: any;
+  financialModel: FinancialModel | null;
+  send: (data: object) => void;
+}
+
+async function generateSection(
+  fs: ReportFormatSection,
+  ctx: GenerateSectionCtx,
+): Promise<void> {
+  const {
+    baseVars,
+    sectionInstructions,
+    oneTimeInstructions,
+    allAnswers,
+    sections,
+    generatedKeys,
+    projectId,
+    supabase,
+    financialModel,
+    send,
+  } = ctx;
+
+  send({ type: "generating", section: fs.key, label: fs.title });
+
+  const sectionVars = {
     ...baseVars,
-    consultant_instructions: consultantInstructions,
+    questionnaire_answers: trimAnswersForTask(
+      allAnswers,
+      (fs.builtin_ai_task || "clarification_check") as AITask,
+      1200,
+    ),
+    consultant_instructions: buildInstructionsBlock(
+      sectionInstructions[fs.key],
+      oneTimeInstructions?.[fs.key],
+    ),
   };
 
-  // Case 1: Custom prompt confirmed by consultant
-  if (section.ai_generated_prompt && section.prompt_confirmed) {
-    let prompt = section.ai_generated_prompt;
-    for (const [k, v] of Object.entries(varsWithInstructions)) {
-      prompt = prompt.replaceAll(`{{${k}}}`, v || "Not specified");
+  try {
+    let content: string;
+
+    if (fs.ai_generated_prompt && fs.prompt_confirmed) {
+      // Custom prompt path
+      let prompt = fs.ai_generated_prompt;
+      for (const [k, v] of Object.entries(sectionVars)) {
+        prompt = prompt.replaceAll(`{{${k}}}`, v || "Not specified");
+      }
+      prompt = prompt.replaceAll(/\{\{[^}]+\}\}/g, "Not specified").trim();
+      const result = await gateway.execute({
+        task: fs.key,
+        prompt,
+        maxTokens: fs.max_tokens,
+      });
+      content = result.content;
+    } else if (fs.builtin_ai_task) {
+      // Built-in task path
+      const resp = await callAI({
+        task: fs.builtin_ai_task as AITask,
+        variables: sectionVars,
+        maxTokens: fs.max_tokens,
+      });
+      content = resp.content;
+    } else {
+      content = `> **[Section skipped — no confirmed prompt]**\n\nAdd a prompt hint in Report Formats → Edit, then regenerate.`;
     }
-    // Clean any remaining unfilled tokens
-    prompt = prompt.replaceAll(/\{\{[^}]+\}\}/g, "Not specified").trim();
-    return { prompt, taskKey: section.key };
-  }
 
-  // Case 2: Built-in section — use prompts.store.ts via callAI's task path
-  if (section.builtin_ai_task) {
-    // Return null here — caller uses callAI({ task: builtin_ai_task }) directly
-    return null; // signals "use built-in task"
-  }
+    sections[fs.key] = {
+      key: fs.key,
+      title: fs.title,
+      content,
+      ai_generated: true,
+      last_edited_at: new Date().toISOString(),
+      approved: false,
+    };
+    generatedKeys.push(fs.key);
 
-  // Case 3: Custom section with no prompt
-  console.warn(
-    `[ReportGen] Section "${section.key}" has no confirmed prompt — skipping.`,
-  );
-  return null;
+    // Persist after each section so UI updates in real time
+    await supabase
+      .from("reports")
+      .upsert(
+        {
+          project_id: projectId,
+          sections: { ...sections },
+          financial_model: financialModel,
+          status: "draft",
+        },
+        { onConflict: "project_id" },
+      );
+
+    send({ type: "section_complete", section: fs.key, content });
+
+    // Capture upstream content for exec summary
+    if (fs.key === "introduction")
+      baseVars.introduction_content = trimContext(content, 800);
+    if (fs.key === "market_analysis")
+      baseVars.market_analysis_content = trimContext(content, 1000);
+  } catch (err) {
+    console.error(`[ReportGen] Section ${fs.key} failed:`, err);
+    sections[fs.key] = {
+      key: fs.key,
+      title: fs.title,
+      content: `> **[Section Generation Failed]**\n\nClick "Regenerate" to retry.`,
+      ai_generated: true,
+      last_edited_at: new Date().toISOString(),
+      approved: false,
+    };
+    send({
+      type: "section_error",
+      section: fs.key,
+      error: err instanceof Error ? err.message : "Unknown",
+    });
+  }
 }
 
 // ── Appendices builder (unchanged) ───────────────────────────────────────────
@@ -315,7 +394,7 @@ export async function POST(req: NextRequest) {
     .eq("project_id", projectId)
     .maybeSingle();
 
-  // Load report format
+  // Load report format — fall back to default if not assigned
   let formatSections: ReportFormatSection[] = DEFAULT_FORMAT_SECTIONS;
   let loadedFormat: ReportFormat | null = null;
 
@@ -424,7 +503,7 @@ async function runPipeline({
   const sectionInstructions: Record<string, string> =
     (project as any).section_instructions || {};
 
-  // Phase 0: context
+  // Phase 0: context gathering
   send({
     type: "phase",
     phase: 0,
@@ -449,7 +528,7 @@ async function runPipeline({
       : "GPS coordinates not provided.";
   }
 
-  // Financial model resolution (unchanged logic)
+  // Financial model resolution
   let financialModel: FinancialModel | null = null;
   let financialModelSource = "ai_generated";
   const override = (project as any)
@@ -549,7 +628,6 @@ async function runPipeline({
     market_analysis_content: "",
   };
 
-  // Determine target sections from format
   const allFormatSectionKeys = formatSections.map(
     (s: ReportFormatSection) => s.key,
   );
@@ -557,7 +635,7 @@ async function runPipeline({
     ? (sectionsToGenerate as string[])
     : allFormatSectionKeys;
 
-  // Separate executive_summary (always last)
+  // Separate executive_summary from the rest — it always runs last
   const execSection = formatSections.find(
     (s: ReportFormatSection) => s.key === "executive_summary",
   );
@@ -574,7 +652,21 @@ async function runPipeline({
   };
   const generatedKeys: string[] = [];
 
-  // Technical analysis (same logic as before)
+  // Shared context for generateSection calls
+  const sectionCtx: GenerateSectionCtx = {
+    baseVars,
+    sectionInstructions,
+    oneTimeInstructions,
+    allAnswers,
+    sections,
+    generatedKeys,
+    projectId,
+    supabase,
+    financialModel,
+    send,
+  };
+
+  // Technical analysis
   const skipTechnicalRegen =
     isIncremental &&
     Array.isArray(sectionsToGenerate) &&
@@ -615,7 +707,7 @@ async function runPipeline({
   }
   baseVars.technical_analysis = trimContext(technicalAnalysis, 2500);
 
-  // Group format sections by phase
+  // Group phasedKeys sections by phase (1–6)
   const phaseMap = new Map<number, ReportFormatSection[]>();
   for (const fs of formatSections) {
     if (!phasedKeys.includes(fs.key)) continue;
@@ -623,7 +715,7 @@ async function runPipeline({
     phaseMap.set(phase, [...(phaseMap.get(phase) || []), fs]);
   }
 
-  // Generate phases 1-5
+  // ── Phases 1–5 ────────────────────────────────────────────────────────────
   for (let phase = 1; phase <= 5; phase++) {
     const phaseSections = phaseMap.get(phase) || [];
     if (!phaseSections.length) continue;
@@ -631,106 +723,32 @@ async function runPipeline({
     send({ type: "phase", phase, label: `Phase ${phase} sections…` });
     const canParallel = phase !== 1 && phase !== 3;
 
-    const tasks = phaseSections.map((fs: ReportFormatSection) => async () => {
-      send({ type: "generating", section: fs.key, label: fs.title });
-
-      const sectionVars = {
-        ...baseVars,
-        questionnaire_answers: trimAnswersForTask(
-          allAnswers,
-          (fs.builtin_ai_task || "clarification_check") as AITask,
-          1200,
-        ),
-        consultant_instructions: buildInstructionsBlock(
-          sectionInstructions[fs.key],
-          oneTimeInstructions?.[fs.key],
-        ),
-      };
-
-      try {
-        let content: string;
-
-        if (fs.ai_generated_prompt && fs.prompt_confirmed) {
-          // Custom prompt path — call gateway directly
-          let prompt = fs.ai_generated_prompt;
-          for (const [k, v] of Object.entries(sectionVars)) {
-            prompt = prompt.replaceAll(`{{${k}}}`, v || "Not specified");
-          }
-          prompt = prompt.replaceAll(/\{\{[^}]+\}\}/g, "Not specified").trim();
-
-          const result = await gateway.execute({
-            task: fs.key,
-            prompt,
-            maxTokens: fs.max_tokens,
-          });
-          content = result.content;
-        } else if (fs.builtin_ai_task) {
-          // Built-in task path (prompts.store.ts)
-          const resp = await callAI({
-            task: fs.builtin_ai_task as AITask,
-            variables: sectionVars,
-            maxTokens: fs.max_tokens,
-          });
-          content = resp.content;
-        } else {
-          // No prompt available
-          content = `> **[Section skipped — no confirmed prompt]**\n\nAdd a prompt hint in Report Formats → Edit, then regenerate.`;
-        }
-
-        sections[fs.key] = {
-          key: fs.key,
-          title: fs.title,
-          content,
-          ai_generated: true,
-          last_edited_at: new Date().toISOString(),
-          approved: false,
-        };
-        generatedKeys.push(fs.key);
-
-        await supabase
-          .from("reports")
-          .upsert(
-            {
-              project_id: projectId,
-              sections: { ...sections },
-              financial_model: financialModel,
-              status: "draft",
-            },
-            { onConflict: "project_id" },
-          );
-
-        send({ type: "section_complete", section: fs.key, content });
-
-        if (fs.key === "introduction")
-          baseVars.introduction_content = trimContext(content, 800);
-        if (fs.key === "market_analysis")
-          baseVars.market_analysis_content = trimContext(content, 1000);
-      } catch (err) {
-        console.error(`[ReportGen] Section ${fs.key} failed:`, err);
-        sections[fs.key] = {
-          key: fs.key,
-          title: fs.title,
-          content: `> **[Section Generation Failed]**\n\nClick "Regenerate" to retry.`,
-          ai_generated: true,
-          last_edited_at: new Date().toISOString(),
-          approved: false,
-        };
-        send({
-          type: "section_error",
-          section: fs.key,
-          error: err instanceof Error ? err.message : "Unknown",
-        });
-      }
-    });
+    const tasks = phaseSections.map(
+      (fs: ReportFormatSection) => () => generateSection(fs, sectionCtx),
+    );
 
     if (canParallel) {
-      await Promise.all(tasks.map((t: any) => t()));
+      await Promise.all(tasks.map((t) => t()));
     } else {
       for (const task of tasks) await task();
     }
   }
 
-  // Phase 6: Executive Summary
+  // ── FIX 1: Phase 6a — custom phase-6 sections (NOT executive_summary) ────
+  // These run BEFORE executive_summary so it can reference their content.
+  const customPhase6 = (phaseMap.get(6) || []).filter(
+    (fs: ReportFormatSection) => fs.key !== "executive_summary",
+  );
+  if (customPhase6.length) {
+    send({ type: "phase", phase: 6, label: "Phase 6 synthesis sections…" });
+    await Promise.all(
+      customPhase6.map((fs: ReportFormatSection) =>
+        generateSection(fs, sectionCtx),
+      ),
+    );
+  }
+
+  // ── Phase 6b: Executive Summary (always last) ─────────────────────────────
   if (execSection && targetKeys.includes("executive_summary")) {
     send({
       type: "generating",
@@ -798,7 +816,7 @@ async function runPipeline({
     }
   }
 
-  // Context + appendices
+  // Context sections
   sections["context_market_data"] = {
     key: "context_market_data",
     content: marketResearch,
@@ -816,6 +834,7 @@ async function runPipeline({
     approved: false,
   };
 
+  // Appendices (full generation only)
   if (!sectionsToGenerate) {
     const appendices = await buildAutoAppendices(
       project,
