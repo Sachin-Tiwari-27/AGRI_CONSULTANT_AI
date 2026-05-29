@@ -9,6 +9,7 @@ import {
   Settings,
   LogOut,
   Leaf,
+  LayoutTemplate,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -26,6 +27,11 @@ const NAV = [
     exact: true,
   },
   { href: "/dashboard/projects", label: "Projects", icon: FolderOpen },
+  {
+    href: "/dashboard/report-formats",
+    label: "Report Formats",
+    icon: LayoutTemplate,
+  },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
