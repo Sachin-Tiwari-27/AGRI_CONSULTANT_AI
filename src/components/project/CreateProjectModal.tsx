@@ -20,6 +20,7 @@ import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { getCurrencyByGPS } from "@/lib/utils";
 import { Plus } from "lucide-react";
+import { FormatSelector } from "@/components/report-formats/FormatSelector";
 
 const schema = z.object({
   title: z.string().min(3, "Title is required"),
@@ -62,6 +63,7 @@ export function CreateProjectModal({ onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
   const [customCrop, setCustomCrop] = useState("");
+  const [reportFormatId, setReportFormatId] = useState<string | null>(null);
 
   const {
     register,
@@ -108,6 +110,7 @@ export function CreateProjectModal({ onClose }: Props) {
             ? parseFloat(data.land_size_sqm)
             : undefined,
           crop_types: selectedCrops,
+          report_format_id: reportFormatId ?? undefined,
         }),
       });
       const project = await res.json();
@@ -324,6 +327,24 @@ export function CreateProjectModal({ onClose }: Props) {
                 </Button>
               </div>
             )}
+          </div>
+
+          <Separator />
+
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Report format
+            </p>
+            <Field
+              label="Report format"
+              htmlFor="report-format"
+              hint="Choose which sections to include in the generated report"
+            >
+              <FormatSelector
+                value={reportFormatId}
+                onChange={setReportFormatId}
+              />
+            </Field>
           </div>
 
           <Separator />

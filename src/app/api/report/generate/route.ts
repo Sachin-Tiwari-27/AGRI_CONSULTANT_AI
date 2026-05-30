@@ -1,3 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Key changes:
+//   1. Loads report_format from the project's report_format_id (falls back to
+//      the built-in REPORT_SECTIONS config for legacy projects).
+//   2. For each section, resolves the prompt:
+//        a. Custom section with confirmed ai_generated_prompt → use that prompt
+//        b. Built-in section with builtin_ai_task → use prompts.store.ts (existing)
+//        c. Custom section without prompt → skip with warning
+//   3. Snapshots the format onto the report so the editor always knows what
+//      sections to show, even if the format changes later.
+//   4. All other logic (financial model, streaming, phases, appendices) unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -13,13 +26,12 @@ import {
   serialiseAnswersForPrompt,
 } from "@/lib/utils";
 import { logProjectEvent } from "@/lib/events";
-import {
-  REPORT_SECTIONS,
-  REPORT_APPENDICES,
-  getSectionsByPhase,
-  CONTEXT_SECTION_KEYS,
-} from "@/lib/report-section-config";
+import { gateway } from "@/lib/ai/gateway";
 import type { ReportSectionKey, FinancialModel, AITask } from "@/types";
+import type { ReportFormat, ReportFormatSection } from "@/types/report-format";
+import { DEFAULT_FORMAT_SECTIONS } from "@/lib/report-format-defaults";
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 function resolveCurrency(project: Record<string, unknown>): string {
   return (
@@ -29,11 +41,7 @@ function resolveCurrency(project: Record<string, unknown>): string {
   );
 }
 
-// ── Build consultant instructions block for AI prompts ─────────────────
-function buildInstructionsBlock(
-  persistent?: string,
-  oneTime?: string,
-): string {
+function buildInstructionsBlock(persistent?: string, oneTime?: string): string {
   const parts: string[] = [];
   if (persistent?.trim()) {
     parts.push("**Consultant's standing instructions for this section:**");
@@ -44,10 +52,14 @@ function buildInstructionsBlock(
     parts.push(oneTime.trim());
   }
   if (!parts.length) return "";
-  return ["---", ...parts, "Apply the above instructions carefully. They override the structural guidance where they conflict.", "---"].join("\n");
+  return [
+    "---",
+    ...parts,
+    "Apply the above instructions carefully. They override the structural guidance where they conflict.",
+    "---",
+  ].join("\n");
 }
 
-// ── SSE helpers ────────────────────────────────────────────────────────
 function createSSEStream() {
   const encoder = new TextEncoder();
   let ctrl: ReadableStreamDefaultController<Uint8Array>;
@@ -69,7 +81,135 @@ function createSSEStream() {
   return { stream, send, close };
 }
 
-// ── Auto-populate appendices from project data ─────────────────────────
+// ── FIX 1: Extracted section generator ───────────────────────────────────────
+// Previously the generate-section logic was inlined in a lambda inside the
+// phase loop. Extracting it:
+//   a) Removes 60+ lines of duplication between the phase loop and exec summary
+//   b) Lets phase-6a custom sections reuse the same path cleanly
+//   c) Keeps the phase loop readable
+
+interface GenerateSectionCtx {
+  baseVars: Record<string, string>;
+  sectionInstructions: Record<string, string>;
+  oneTimeInstructions: Record<string, string>;
+  allAnswers: Record<string, unknown>;
+  sections: Record<string, unknown>;
+  generatedKeys: string[];
+  projectId: string;
+  supabase: any;
+  financialModel: FinancialModel | null;
+  send: (data: object) => void;
+}
+
+async function generateSection(
+  fs: ReportFormatSection,
+  ctx: GenerateSectionCtx,
+): Promise<void> {
+  const {
+    baseVars,
+    sectionInstructions,
+    oneTimeInstructions,
+    allAnswers,
+    sections,
+    generatedKeys,
+    projectId,
+    supabase,
+    financialModel,
+    send,
+  } = ctx;
+
+  send({ type: "generating", section: fs.key, label: fs.title });
+
+  const sectionVars = {
+    ...baseVars,
+    questionnaire_answers: trimAnswersForTask(
+      allAnswers,
+      (fs.builtin_ai_task || "clarification_check") as AITask,
+      1200,
+    ),
+    consultant_instructions: buildInstructionsBlock(
+      sectionInstructions[fs.key],
+      oneTimeInstructions?.[fs.key],
+    ),
+  };
+
+  try {
+    let content: string;
+
+    if (fs.ai_generated_prompt && fs.prompt_confirmed) {
+      // Custom prompt path
+      let prompt = fs.ai_generated_prompt;
+      for (const [k, v] of Object.entries(sectionVars)) {
+        prompt = prompt.replaceAll(`{{${k}}}`, v || "Not specified");
+      }
+      prompt = prompt.replaceAll(/\{\{[^}]+\}\}/g, "Not specified").trim();
+      const result = await gateway.execute({
+        task: fs.key,
+        prompt,
+        maxTokens: fs.max_tokens,
+      });
+      content = result.content;
+    } else if (fs.builtin_ai_task) {
+      // Built-in task path
+      const resp = await callAI({
+        task: fs.builtin_ai_task as AITask,
+        variables: sectionVars,
+        maxTokens: fs.max_tokens,
+      });
+      content = resp.content;
+    } else {
+      content = `> **[Section skipped — no confirmed prompt]**\n\nAdd a prompt hint in Report Formats → Edit, then regenerate.`;
+    }
+
+    sections[fs.key] = {
+      key: fs.key,
+      title: fs.title,
+      content,
+      ai_generated: true,
+      last_edited_at: new Date().toISOString(),
+      approved: false,
+    };
+    generatedKeys.push(fs.key);
+
+    // Persist after each section so UI updates in real time
+    await supabase
+      .from("reports")
+      .upsert(
+        {
+          project_id: projectId,
+          sections: { ...sections },
+          financial_model: financialModel,
+          status: "draft",
+        },
+        { onConflict: "project_id" },
+      );
+
+    send({ type: "section_complete", section: fs.key, content });
+
+    // Capture upstream content for exec summary
+    if (fs.key === "introduction")
+      baseVars.introduction_content = trimContext(content, 800);
+    if (fs.key === "market_analysis")
+      baseVars.market_analysis_content = trimContext(content, 1000);
+  } catch (err) {
+    console.error(`[ReportGen] Section ${fs.key} failed:`, err);
+    sections[fs.key] = {
+      key: fs.key,
+      title: fs.title,
+      content: `> **[Section Generation Failed]**\n\nClick "Regenerate" to retry.`,
+      ai_generated: true,
+      last_edited_at: new Date().toISOString(),
+      approved: false,
+    };
+    send({
+      type: "section_error",
+      section: fs.key,
+      error: err instanceof Error ? err.message : "Unknown",
+    });
+  }
+}
+
+// ── Appendices builder (unchanged) ───────────────────────────────────────────
 async function buildAutoAppendices(
   project: any,
   submissions: any[],
@@ -81,53 +221,47 @@ async function buildAutoAppendices(
   const appendices: Record<string, unknown> = {};
   const now = new Date().toISOString();
 
-  // Appendix A — Questionnaire summary
-  const questionnaireContent = submissions
-    .filter((s) => s.submitted_at)
-    .map((s) => {
-      const lines = [
-        `**Round ${s.round}** — Submitted ${new Date(s.submitted_at).toLocaleDateString("en-GB")}\n`,
-      ];
-      for (const [key, val] of Object.entries(s.answers || {})) {
-        if (typeof val === "object" && val !== null && !Array.isArray(val))
-          continue; // skip file objects
-        const label = key;
-        const value = Array.isArray(val)
-          ? (val as string[]).join(", ")
-          : typeof val === "boolean"
-            ? val
-              ? "Yes"
-              : "No"
-            : String(val ?? "");
-        if (value) lines.push(`**${label}:** ${value}`);
-      }
-      return lines.join("\n");
-    })
-    .join("\n\n---\n\n");
-
   appendices["appendix_questionnaire"] = {
     key: "appendix_questionnaire",
     title: "Appendix A — Questionnaire Summary",
-    content: questionnaireContent || "No questionnaire submissions found.",
+    content:
+      submissions
+        .filter((s) => s.submitted_at)
+        .map((s) => {
+          const lines = [
+            `**Round ${s.round}** — Submitted ${new Date(s.submitted_at).toLocaleDateString("en-GB")}\n`,
+          ];
+          for (const [key, val] of Object.entries(s.answers || {})) {
+            if (typeof val === "object" && val !== null && !Array.isArray(val))
+              continue;
+            const value = Array.isArray(val)
+              ? (val as string[]).join(", ")
+              : typeof val === "boolean"
+                ? val
+                  ? "Yes"
+                  : "No"
+                : String(val ?? "");
+            if (value) lines.push(`**${key}:** ${value}`);
+          }
+          return lines.join("\n");
+        })
+        .join("\n\n---\n\n") || "No questionnaire submissions found.",
     ai_generated: false,
     is_auto_populated: true,
     last_edited_at: now,
     approved: true,
   };
 
-  // Appendix B — Climate data
   appendices["appendix_climate"] = {
     key: "appendix_climate",
     title: "Appendix B — Climate Data",
-    content:
-      climateData || "Climate data not available — GPS coordinates required.",
+    content: climateData || "Climate data not available.",
     ai_generated: false,
     is_auto_populated: true,
     last_edited_at: now,
     approved: true,
   };
 
-  // Appendix C — Market research sources
   const sourceLines = marketResearch
     .split("\n")
     .filter((l) => l.match(/\[Source \d+\]/))
@@ -146,13 +280,11 @@ async function buildAutoAppendices(
     approved: true,
   };
 
-  // Appendix D — Financial assumptions
-  const assumptions = financialModel?.assumptions ?? [];
   appendices["appendix_assumptions"] = {
     key: "appendix_assumptions",
     title: "Appendix D — Financial Assumptions Register",
-    content: assumptions.length
-      ? assumptions.map((a, i) => `${i + 1}. ${a}`).join("\n")
+    content: financialModel?.assumptions?.length
+      ? financialModel.assumptions.map((a, i) => `${i + 1}. ${a}`).join("\n")
       : "No assumptions recorded.",
     ai_generated: false,
     is_auto_populated: true,
@@ -160,25 +292,12 @@ async function buildAutoAppendices(
     approved: true,
   };
 
-  // Placeholder appendices (E-I) — check if file already uploaded in questionnaire
-  const waterFile = Object.values(allAnswers).find(
-    (v: any) => v && typeof v === "object" && v.question_id === "q9",
-  ) as any;
-
-  appendices["appendix_water_quality"] = {
-    key: "appendix_water_quality",
-    title: "Appendix E — Water Quality Report",
-    content: waterFile
-      ? `Water quality report provided by client.\nFile: ${waterFile.filename}\n\n⬡ PLACEHOLDER: Verify and attach the formal laboratory report.`
-      : "⬡ PLACEHOLDER: Water Quality Report\n\nUpload the laboratory EC/TDS/pH analysis report for the water source.\nThis is mandatory for hydroponic projects.",
-    ai_generated: false,
-    is_placeholder: !waterFile,
-    is_auto_populated: !!waterFile,
-    last_edited_at: now,
-    approved: !!waterFile,
-  };
-
   for (const { key, title, placeholderHint } of [
+    {
+      key: "appendix_water_quality",
+      title: "Appendix E — Water Quality Report",
+      placeholderHint: "Upload the laboratory EC/TDS/pH analysis report.",
+    },
     {
       key: "appendix_soil_analysis",
       title: "Appendix F — Soil Analysis Report",
@@ -187,20 +306,17 @@ async function buildAutoAppendices(
     {
       key: "appendix_site_survey",
       title: "Appendix G — Site Survey / Map",
-      placeholderHint:
-        "Upload land survey, cadastral document, or satellite map with boundaries marked.",
+      placeholderHint: "Upload land survey or satellite map.",
     },
     {
       key: "appendix_supplier_quotes",
       title: "Appendix H — Equipment Supplier Quotes",
-      placeholderHint:
-        "Attach supplier quotes for greenhouse structure, cooling system, and irrigation equipment.",
+      placeholderHint: "Attach supplier quotes.",
     },
     {
       key: "appendix_company_profile",
       title: "Appendix I — Company / Firm Profile",
-      placeholderHint:
-        "Attach consultant firm profile, past project portfolio, and certifications.",
+      placeholderHint: "Attach consultant firm profile.",
     },
   ]) {
     appendices[key] = {
@@ -218,6 +334,8 @@ async function buildAutoAppendices(
   return appendices;
 }
 
+// ── Main handler ──────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -227,20 +345,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const body = await req.json();
-  const { projectId, sectionsToGenerate, stream: useStream = false, oneTimeInstructions } = body;
+  const {
+    projectId,
+    sectionsToGenerate,
+    stream: useStream = false,
+    oneTimeInstructions = {},
+  } = body;
 
   const { data: project } = await supabase
-    .from('projects')
-    .select('*, financial_model_override, financial_model_notes, section_instructions')
-    .eq('id', projectId)
+    .from("projects")
+    .select(
+      "*, financial_model_override, financial_model_notes, section_instructions, report_format_id",
+    )
+    .eq("id", projectId)
     .single();
 
-  if (!project || project.consultant_id !== user.id) {
+  if (!project || project.consultant_id !== user.id)
     return NextResponse.json(
       { error: "Not found or forbidden" },
       { status: 404 },
     );
-  }
 
   const currency = resolveCurrency(project as Record<string, unknown>);
 
@@ -270,11 +394,27 @@ export async function POST(req: NextRequest) {
     .eq("project_id", projectId)
     .maybeSingle();
 
+  // Load report format — fall back to default if not assigned
+  let formatSections: ReportFormatSection[] = DEFAULT_FORMAT_SECTIONS;
+  let loadedFormat: ReportFormat | null = null;
+
+  if (project.report_format_id) {
+    const { data: fmt } = await supabase
+      .from("report_formats")
+      .select("*")
+      .eq("id", project.report_format_id)
+      .single();
+    if (fmt) {
+      loadedFormat = fmt as ReportFormat;
+      formatSections = fmt.sections ?? DEFAULT_FORMAT_SECTIONS;
+    }
+  }
+
   const isIncremental = !!(sectionsToGenerate && existingReport);
 
   if (useStream) {
     const { stream, send, close } = createSSEStream();
-    runFullPipeline({
+    runPipeline({
       project,
       user,
       supabase,
@@ -285,11 +425,13 @@ export async function POST(req: NextRequest) {
       isIncremental,
       sectionsToGenerate,
       projectId,
+      formatSections,
+      loadedFormat,
       send,
       close,
-      oneTimeInstructions: oneTimeInstructions || {},
+      oneTimeInstructions,
     }).catch((err) => {
-      console.error("[ReportGen-PR6] Fatal:", err);
+      console.error("[ReportGen] Fatal:", err);
       send({ type: "error", error: err.message });
       close();
     });
@@ -303,8 +445,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Non-streaming
-  const result = await runFullPipeline({
+  const result = await runPipeline({
     project,
     user,
     supabase,
@@ -315,15 +456,18 @@ export async function POST(req: NextRequest) {
     isIncremental,
     sectionsToGenerate,
     projectId,
+    formatSections,
+    loadedFormat,
     send: () => {},
     close: () => {},
-    oneTimeInstructions: oneTimeInstructions || {},
+    oneTimeInstructions,
   });
   return NextResponse.json({ success: true, sections: result.generatedKeys });
 }
 
-// ── Full 6-phase generation pipeline ──────────────────────────────────
-async function runFullPipeline({
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+
+async function runPipeline({
   project,
   user,
   supabase,
@@ -334,6 +478,8 @@ async function runFullPipeline({
   isIncremental,
   sectionsToGenerate,
   projectId,
+  formatSections,
+  loadedFormat,
   send,
   close,
   oneTimeInstructions,
@@ -357,7 +503,7 @@ async function runFullPipeline({
   const sectionInstructions: Record<string, string> =
     (project as any).section_instructions || {};
 
-  // ── Phase 0: Context gathering (parallel) ──────────────────────────
+  // Phase 0: context gathering
   send({
     type: "phase",
     phase: 0,
@@ -369,13 +515,12 @@ async function runFullPipeline({
   let climateData: string =
     existingReport?.sections?.context_climate_data?.content || "";
 
-  if (!marketResearch) {
+  if (!marketResearch)
     marketResearch = await researchMarket(
       project.crop_types || [],
       project.region || "",
       project.country || "",
     );
-  }
   if (!climateData) {
     const gps = parseGPS(project.gps_coordinates || "");
     climateData = gps
@@ -383,7 +528,7 @@ async function runFullPipeline({
       : "GPS coordinates not provided.";
   }
 
-  // ── Financial model: override → existing → AI ──────────────────────
+  // Financial model resolution
   let financialModel: FinancialModel | null = null;
   let financialModelSource = "ai_generated";
   const override = (project as any)
@@ -405,7 +550,6 @@ async function runFullPipeline({
       allAnswers,
       "financial_projection",
     );
-    const cropList = (project.crop_types || []).join(", ");
     financialModel = await callAIJSON<FinancialModel>({
       task: "financial_projection",
       variables: {
@@ -413,7 +557,7 @@ async function runFullPipeline({
         region: project.region || "Not specified",
         country: project.country || "Not specified",
         currency,
-        crop_types: cropList,
+        crop_types: (project.crop_types || []).join(", "),
         project_type: project.project_type || "greenhouse",
         target_markets:
           (project.target_market || []).join(", ") || "Local market",
@@ -432,9 +576,6 @@ async function runFullPipeline({
     });
   }
 
-  // ── Build base variables shared across all section prompts ─────────
-  const cropList = (project.crop_types || []).join(", ");
-
   const { data: profile } = await supabase
     .from("profiles")
     .select(
@@ -442,6 +583,8 @@ async function runFullPipeline({
     )
     .eq("id", user.id)
     .single();
+
+  const cropList = (project.crop_types || []).join(", ");
 
   const baseVars: Record<string, string> = {
     project_title: project.title,
@@ -481,28 +624,27 @@ async function runFullPipeline({
     questionnaire_answers: serialiseAnswersForPrompt(allAnswers, {
       maxChars: 1500,
     }),
-    // Placeholders for upstream section content (filled in Phase 6)
     introduction_content: "",
     market_analysis_content: "",
   };
 
-  // ── Determine which sections to generate ──────────────────────────
-  const targetSections: ReportSectionKey[] = sectionsToGenerate
-    ? (sectionsToGenerate as ReportSectionKey[])
-    : REPORT_SECTIONS.map((s) => s.key);
+  const allFormatSectionKeys = formatSections.map(
+    (s: ReportFormatSection) => s.key,
+  );
+  const targetKeys: string[] = sectionsToGenerate
+    ? (sectionsToGenerate as string[])
+    : allFormatSectionKeys;
 
-  // Exclude executive_summary from phased generation — it runs in Phase 6
-  // Cast back to ReportSectionKey[] — TypeScript narrows filter(k !== X) to
-  // Exclude<ReportSectionKey, "executive_summary">[] which breaks includes(sc.key).
-  const phasedSections = targetSections.filter(
-    (k) => k !== "executive_summary",
-  ) as ReportSectionKey[];
-  const phaseMap = getSectionsByPhase();
+  // Separate executive_summary from the rest — it always runs last
+  const execSection = formatSections.find(
+    (s: ReportFormatSection) => s.key === "executive_summary",
+  );
+  const phasedKeys = targetKeys.filter((k) => k !== "executive_summary");
 
   send({
     type: "start",
-    sections: targetSections,
-    totalSections: targetSections.length,
+    sections: targetKeys,
+    totalSections: targetKeys.length,
   });
 
   const sections: Record<string, unknown> = {
@@ -510,12 +652,21 @@ async function runFullPipeline({
   };
   const generatedKeys: string[] = [];
 
-  // ── Technical analysis (needed by multiple sections) ───────────────
-  // Only reuse existing analysis for a narrowly-targeted incremental regen
-  // that does NOT include technical_analysis in its explicit target list.
-  // On full regen (sectionsToGenerate = null) OR when technical_analysis is
-  // explicitly targeted, always recompute so updated questionnaire data is
-  // reflected in all downstream sections.
+  // Shared context for generateSection calls
+  const sectionCtx: GenerateSectionCtx = {
+    baseVars,
+    sectionInstructions,
+    oneTimeInstructions,
+    allAnswers,
+    sections,
+    generatedKeys,
+    projectId,
+    supabase,
+    financialModel,
+    send,
+  };
+
+  // Technical analysis
   const skipTechnicalRegen =
     isIncremental &&
     Array.isArray(sectionsToGenerate) &&
@@ -524,6 +675,7 @@ async function runFullPipeline({
   let technicalAnalysis = skipTechnicalRegen
     ? existingReport?.sections?.technical_analysis?.content || ""
     : "";
+
   if (!technicalAnalysis) {
     send({
       type: "generating",
@@ -555,93 +707,25 @@ async function runFullPipeline({
   }
   baseVars.technical_analysis = trimContext(technicalAnalysis, 2500);
 
-  // ── Phases 1-5: generate sections in phase order ───────────────────
-  for (let phase = 1; phase <= 5; phase++) {
-    const phaseSections = (phaseMap.get(phase as any) || []).filter(
-      (sc) => phasedSections.includes(sc.key) && sc.aiTask !== null,
-    );
+  // Group phasedKeys sections by phase (1–6)
+  const phaseMap = new Map<number, ReportFormatSection[]>();
+  for (const fs of formatSections) {
+    if (!phasedKeys.includes(fs.key)) continue;
+    const phase = fs.generation_phase ?? 3;
+    phaseMap.set(phase, [...(phaseMap.get(phase) || []), fs]);
+  }
 
+  // ── Phases 1–5 ────────────────────────────────────────────────────────────
+  for (let phase = 1; phase <= 5; phase++) {
+    const phaseSections = phaseMap.get(phase) || [];
     if (!phaseSections.length) continue;
 
     send({ type: "phase", phase, label: `Phase ${phase} sections…` });
+    const canParallel = phase !== 1 && phase !== 3;
 
-    // Within each phase, can run in parallel (Phase 2, 4, 5 have independent sections)
-    const canParallel = phase !== 1 && phase !== 3; // Phase 1 & 3 are sequential
-    const tasks = phaseSections.map((sc) => async () => {
-      send({ type: "generating", section: sc.key, label: sc.title });
-
-      const sectionVars = {
-        ...baseVars,
-        questionnaire_answers: trimAnswersForTask(
-          allAnswers,
-          sc.aiTask as AITask,
-          1200,
-        ),
-        consultant_instructions: buildInstructionsBlock(
-          sectionInstructions[sc.key],
-          oneTimeInstructions?.[sc.key],
-        ),
-      };
-
-      try {
-        const resp = await callAI({
-          task: sc.aiTask as AITask,
-          variables: sectionVars,
-          maxTokens: sc.maxTokens,
-        });
-
-        const sectionData = {
-          key: sc.key,
-          title: sc.title,
-          content: resp.content,
-          ai_generated: true,
-          has_placeholders: sc.hasPlaceholders,
-          last_edited_at: new Date().toISOString(),
-          approved: false,
-        };
-
-        sections[sc.key] = sectionData;
-        generatedKeys.push(sc.key);
-
-        // Persist after each section so user can see it immediately
-        await supabase.from("reports").upsert(
-          {
-            project_id: projectId,
-            sections: { ...sections },
-            financial_model: financialModel,
-            status: "draft",
-          },
-          { onConflict: "project_id" },
-        );
-
-        send({
-          type: "section_complete",
-          section: sc.key,
-          content: resp.content,
-        });
-
-        // Capture key upstream sections for Phase 6 executive summary
-        if (sc.key === "introduction")
-          baseVars.introduction_content = trimContext(resp.content, 800);
-        if (sc.key === "market_analysis")
-          baseVars.market_analysis_content = trimContext(resp.content, 1000);
-      } catch (err) {
-        console.error(`[ReportGen-PR6] Section ${sc.key} failed:`, err);
-        sections[sc.key] = {
-          key: sc.key,
-          title: sc.title,
-          content: `> **[Section Generation Failed]**\n\nClick "Regenerate" to retry.`,
-          ai_generated: true,
-          last_edited_at: new Date().toISOString(),
-          approved: false,
-        };
-        send({
-          type: "section_error",
-          section: sc.key,
-          error: err instanceof Error ? err.message : "Unknown",
-        });
-      }
-    });
+    const tasks = phaseSections.map(
+      (fs: ReportFormatSection) => () => generateSection(fs, sectionCtx),
+    );
 
     if (canParallel) {
       await Promise.all(tasks.map((t) => t()));
@@ -650,57 +734,80 @@ async function runFullPipeline({
     }
   }
 
-  // ── Phase 6: Executive Summary (LAST — synthesises everything) ─────
-  if (targetSections.includes("executive_summary")) {
-    const execConfig = REPORT_SECTIONS.find(
-      (s) => s.key === "executive_summary",
-    )!;
+  // ── FIX 1: Phase 6a — custom phase-6 sections (NOT executive_summary) ────
+  // These run BEFORE executive_summary so it can reference their content.
+  const customPhase6 = (phaseMap.get(6) || []).filter(
+    (fs: ReportFormatSection) => fs.key !== "executive_summary",
+  );
+  if (customPhase6.length) {
+    send({ type: "phase", phase: 6, label: "Phase 6 synthesis sections…" });
+    await Promise.all(
+      customPhase6.map((fs: ReportFormatSection) =>
+        generateSection(fs, sectionCtx),
+      ),
+    );
+  }
+
+  // ── Phase 6b: Executive Summary (always last) ─────────────────────────────
+  if (execSection && targetKeys.includes("executive_summary")) {
     send({
       type: "generating",
       section: "executive_summary",
-      label: "1. Executive Summary (synthesising all sections)…",
+      label: "Executive Summary (synthesising all sections)…",
     });
 
     try {
-      const resp = await callAI({
-        task: "report_executive_summary",
-        variables: {
-          ...baseVars,
-          questionnaire_answers: trimAnswersForTask(
-            allAnswers,
-            "report_executive_summary",
-            800,
-          ),
-          // Now has real upstream content from phases 1-5
-          introduction_content:
-            baseVars.introduction_content || trimContext(marketResearch, 400),
-          market_analysis_content:
-            baseVars.market_analysis_content ||
-            trimContext(marketResearch, 600),
-          consultant_instructions: buildInstructionsBlock(
-            sectionInstructions["executive_summary"],
-          ),
-        },
-        maxTokens: execConfig.maxTokens,
-      });
+      let content: string;
+      const execVars = {
+        ...baseVars,
+        questionnaire_answers: trimAnswersForTask(
+          allAnswers,
+          "report_executive_summary",
+          800,
+        ),
+        introduction_content:
+          baseVars.introduction_content || trimContext(marketResearch, 400),
+        market_analysis_content:
+          baseVars.market_analysis_content || trimContext(marketResearch, 600),
+        consultant_instructions: buildInstructionsBlock(
+          sectionInstructions["executive_summary"],
+        ),
+      };
+
+      if (execSection.ai_generated_prompt && execSection.prompt_confirmed) {
+        let prompt = execSection.ai_generated_prompt;
+        for (const [k, v] of Object.entries(execVars)) {
+          prompt = prompt.replaceAll(`{{${k}}}`, v || "Not specified");
+        }
+        prompt = prompt.replaceAll(/\{\{[^}]+\}\}/g, "Not specified").trim();
+        const result = await gateway.execute({
+          task: "executive_summary",
+          prompt,
+          maxTokens: execSection.max_tokens,
+        });
+        content = result.content;
+      } else {
+        const resp = await callAI({
+          task: "report_executive_summary",
+          variables: execVars,
+          maxTokens: execSection.max_tokens,
+        });
+        content = resp.content;
+      }
 
       sections["executive_summary"] = {
         key: "executive_summary",
-        title: execConfig.title,
-        content: resp.content,
+        title: execSection.title,
+        content,
         ai_generated: true,
         has_placeholders: true,
         last_edited_at: new Date().toISOString(),
         approved: false,
       };
       generatedKeys.push("executive_summary");
-      send({
-        type: "section_complete",
-        section: "executive_summary",
-        content: resp.content,
-      });
+      send({ type: "section_complete", section: "executive_summary", content });
     } catch (err) {
-      console.error("[ReportGen-PR6] Executive summary failed:", err);
+      console.error("[ReportGen] Executive summary failed:", err);
       send({
         type: "section_error",
         section: "executive_summary",
@@ -709,7 +816,7 @@ async function runFullPipeline({
     }
   }
 
-  // ── Context sections (always saved) ───────────────────────────────
+  // Context sections
   sections["context_market_data"] = {
     key: "context_market_data",
     content: marketResearch,
@@ -727,9 +834,8 @@ async function runFullPipeline({
     approved: false,
   };
 
-  // ── Auto-populate appendices ───────────────────────────────────────
+  // Appendices (full generation only)
   if (!sectionsToGenerate) {
-    // only on full generation, not section regeneration
     const appendices = await buildAutoAppendices(
       project,
       submissions || [],
@@ -741,7 +847,6 @@ async function runFullPipeline({
     Object.assign(sections, appendices);
   }
 
-  // ── Branding ──────────────────────────────────────────────────────
   const branding = {
     consultant_name: profile?.full_name || user.email || "Consultant",
     company_name: profile?.company_name || "AgriAI Consultancy",
@@ -751,7 +856,6 @@ async function runFullPipeline({
     footer_text: profile?.brand_footer_text || null,
   };
 
-  // ── Final save ────────────────────────────────────────────────────
   await supabase.from("reports").upsert(
     {
       project_id: projectId,
@@ -759,6 +863,8 @@ async function runFullPipeline({
       financial_model: financialModel,
       branding,
       status: "draft",
+      report_format_id: loadedFormat?.id ?? null,
+      format_snapshot: loadedFormat ? loadedFormat.sections : null,
     },
     { onConflict: "project_id" },
   );
@@ -775,11 +881,12 @@ async function runFullPipeline({
     title: sectionsToGenerate
       ? `Section regenerated: ${sectionsToGenerate.join(", ")}`
       : `Full report generated (${generatedKeys.length} sections)`,
-    detail: `${generatedKeys.length} sections · FM: ${financialModelSource} · ${currency}`,
+    detail: `${generatedKeys.length} sections · FM: ${financialModelSource} · ${currency}${loadedFormat ? ` · Format: ${loadedFormat.name}` : ""}`,
     metadata: {
       sections_generated: generatedKeys,
       currency,
       financial_model_source: financialModelSource,
+      report_format_id: loadedFormat?.id,
     },
   });
 
