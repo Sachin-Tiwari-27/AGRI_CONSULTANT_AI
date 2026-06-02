@@ -5,22 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { ReportEditor } from "@/components/report/ReportEditor";
 import { PaymentGateModal } from "@/components/report/PaymentGateModal";
 import { ReportPublishBar } from "@/components/report/ReportPublishBar";
 import { ReportSidebarSection } from "@/components/report/ReportSidebarSection";
+import { DocxImportModal } from "@/components/report/DocxImportModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   REPORT_SECTIONS,
   REPORT_APPENDICES,
 } from "@/lib/report-section-config";
-import { formatCurrency } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import {
   Zap,
   CheckCircle,
-  Lock,
   Send,
   Download,
   RefreshCw,
@@ -30,8 +29,18 @@ import {
   ChevronRight,
   FileText,
   PaperclipIcon,
+  Upload,
   Eye,
+  MoreHorizontal,
+  FileDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Report, ReportSectionKey, Project } from "@/types";
 
 const SECTION_TITLES: Record<string, string> = Object.fromEntries(
@@ -65,49 +74,38 @@ export function ReportTab({
   const [streamingReport, setStreamReport] = useState<Report | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showPaymentGate, setShowPaymentGate] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
-  const [markPaidNote, setMarkPaidNote] = useState("");
-  const [showMarkPaid, setShowMarkPaid] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [showDocxImport, setShowDocxImport] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
+  const [publishingExcerpt, setPublishingExcerpt] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [sectionInstructions, setSectionInstructions] = useState<Record<string, string>>(
-    (project as any).section_instructions || {},
-  );
+  const [sectionInstructions, setSectionInstructions] = useState<
+    Record<string, string>
+  >((project as any).section_instructions || {});
   const abortRef = useRef<AbortController | null>(null);
+  const supabase = createClient();
 
   const currency = (project as any).currency || "USD";
-  const fm = report?.financial_model;
   const displayReport = streamingReport ?? report;
   const reportPrice = (project as any).report_price;
-  const paymentCollected = (project as any).payment_collected;
   const isPublished = report?.status === "published";
-  const isCompleted = project.status === "completed";
+  const excerptStatus = (report as any)?.excerpt_status ?? "none";
+  const excerptPublished = excerptStatus === "published";
 
   const sectionKeys = ORDERED_KEYS.filter((k) => displayReport?.sections[k]);
   const generatedCount = sectionKeys.filter(
     (k) => !!displayReport?.sections[k]?.content,
   ).length;
-  const approvedCount = sectionKeys.filter(
-    (k) => displayReport?.sections[k]?.approved,
-  ).length;
-  const allApproved =
-    sectionKeys.length > 0 &&
-    sectionKeys.every((k) => displayReport?.sections[k]?.approved);
   const progress =
     ORDERED_KEYS.length > 0
       ? Math.round((generatedCount / ORDERED_KEYS.length) * 100)
       : 0;
 
-  const previewUrl = `/project/${project.id}/report`;
-
-  // Fetch and sync section instructions
   useEffect(() => {
     fetch(`/api/report/instructions?projectId=${project.id}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.section_instructions) {
+        if (data.section_instructions)
           setSectionInstructions(data.section_instructions);
-        }
       })
       .catch(() => {});
   }, [project.id]);
@@ -124,7 +122,6 @@ export function ReportTab({
     [],
   );
 
-  /* ── Auto-select first section when report loads ─────────────── */
   const prevReportRef = useRef<string | null>(null);
   if (displayReport && displayReport.project_id !== prevReportRef.current) {
     prevReportRef.current = displayReport.project_id;
@@ -132,10 +129,68 @@ export function ReportTab({
     if (first && !activeSection) setActiveSection(first);
   }
 
-  /* ── Streaming generation ────────────────────────────────────── */
+  // ── Word export ───────────────────────────────────────────────────────────
+  async function handleExportWord() {
+    if (!displayReport) return;
+    setExportingDocx(true);
+    try {
+      // Dynamic import so the canvas-heavy export lib only loads when needed
+      const { exportReportAsDocx } = await import("@/lib/report-docx-export");
+
+      // Load format sections if available for correct ordering
+      let formatSections = undefined;
+      const formatId = (report as any)?.report_format_id;
+      if (formatId) {
+        const res = await fetch(`/api/report-formats/${formatId}`);
+        if (res.ok) {
+          const fmt = await res.json();
+          formatSections = fmt.sections;
+        }
+      }
+
+      await exportReportAsDocx(displayReport, project.title, formatSections);
+
+      // Record export timestamp
+      await supabase
+        .from("reports")
+        .update({ last_docx_exported_at: new Date().toISOString() })
+        .eq("project_id", project.id);
+
+      toast.success("Report downloaded as Word document");
+    } catch (e: any) {
+      toast.error(e.message || "Export failed");
+    } finally {
+      setExportingDocx(false);
+    }
+  }
+
+  // ── Excerpt publish ───────────────────────────────────────────────────────
+  async function handlePublishExcerpt() {
+    setPublishingExcerpt(true);
+    try {
+      const res = await fetch("/api/report/publish-excerpt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to publish excerpt");
+
+      onUpdateReport({ ...report!, excerpt_status: "published" } as any);
+      toast.success(`Excerpt published — share this link: ${data.excerptUrl}`, {
+        description: data.excerptUrl,
+      });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to publish excerpt");
+    } finally {
+      setPublishingExcerpt(false);
+    }
+  }
+
+  // ── Streaming generation (unchanged from original) ────────────────────────
   async function generateStreaming(specificSection?: ReportSectionKey) {
     if (!hasSubmission) {
-      alert("Please collect questionnaire data first.");
+      toast.error("Please collect questionnaire data first.");
       return;
     }
     abortRef.current?.abort();
@@ -199,7 +254,6 @@ export function ReportTab({
                     },
                   };
                 });
-                // Auto-advance to first generated section
                 setActiveSection((prev) => prev ?? event.section);
               }
               if (event.type === "complete") {
@@ -227,14 +281,14 @@ export function ReportTab({
       }
     } catch (err: any) {
       if (err.name === "AbortError") return;
-      alert(err.message || "Report generation failed");
+      toast.error(err.message || "Report generation failed");
       setIsStreaming(false);
       setStreaming(null);
       setStreamReport(null);
     }
   }
 
-  /* ── Publish helpers ─────────────────────────────────────────── */
+  // ── Publish helpers (unchanged) ───────────────────────────────────────────
   function handlePublishClick() {
     if (isPublished && reportPrice !== null && reportPrice !== undefined) {
       publishReport(null);
@@ -274,129 +328,78 @@ export function ReportTab({
         status: data.status || "report_published",
         payment_collected: data.payment_collected,
       } as any);
-      if (data.warnings?.length) alert(data.warnings.join("\n"));
+      if (data.warnings?.length) toast.error(data.warnings.join("\n"));
     } catch {
-      alert("Failed to publish report.");
+      toast.error("Failed to publish report.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleMarkPaid() {
-    setMarkingPaid(true);
-    try {
-      const res = await fetch(`/api/projects/${project.id}/mark-paid`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: markPaidNote }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      onUpdateProject({ status: "completed", payment_collected: true } as any);
-      setShowMarkPaid(false);
-      setMarkPaidNote("");
-    } catch {
-      alert("Failed to mark as paid.");
-    } finally {
-      setMarkingPaid(false);
-    }
-  }
-
   async function downloadPdf() {
-    setDownloading(true);
     try {
       const res = await fetch(`/api/report/download?projectId=${project.id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch {
-      alert("Unable to download PDF right now.");
-    } finally {
-      setDownloading(false);
+      toast.error("Unable to download PDF right now.");
     }
   }
 
-  async function resendNotification() {
-    setSaving(true);
-    try {
-      await fetch("/api/report/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id }),
-      });
-      alert("Notification email resent to client.");
-    } catch {
-      alert("Failed to resend email.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* ── Empty state — no report yet ────────────────────────────── */
+  // ── Empty state ───────────────────────────────────────────────────────────
   if (!displayReport && !isStreaming) {
     return (
       <div className="max-w-3xl mx-auto">
-        {/* Hero generate card */}
         <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 p-8 mb-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 bg-brand-500/20 rounded-xl flex items-center justify-center">
               <Sparkles className="size-5 text-brand-400" />
             </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-400">
-                AI Report Generator · {REPORT_SECTIONS.length} sections
-              </p>
-            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-400">
+              AI Report Generator · {REPORT_SECTIONS.length} sections
+            </p>
           </div>
           <h3 className="text-xl font-bold text-white mb-2">
             Generate feasibility report
           </h3>
           <p className="text-slate-300 text-sm mb-6 max-w-md">
             {hasSubmission
-              ? "Sections appear in real-time as they complete. Review, edit, and approve before publishing."
+              ? "Sections appear in real-time as they complete."
               : "Collect the questionnaire first to enable report generation."}
           </p>
-          <Button
-            onClick={() => generateStreaming()}
-            loading={isStreaming}
-            disabled={!hasSubmission || isStreaming}
-            className="bg-brand-600 hover:bg-brand-500 border-brand-500 text-white"
-          >
-            <Zap className="size-4" />
-            Generate Full Report
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => generateStreaming()}
+              loading={isStreaming}
+              disabled={!hasSubmission || isStreaming}
+              className="bg-brand-600 hover:bg-brand-500 border-brand-500 text-white"
+            >
+              <Zap className="size-4" /> Generate Full Report
+            </Button>
+          </div>
         </div>
-
-        {/* Section preview grid */}
         <div className="space-y-1.5">
           {REPORT_SECTIONS.map((sec) => (
             <div
               key={sec.key}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-card hover:border-brand-200 hover:bg-brand-50/30 transition-colors group"
+              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-card hover:border-brand-200 transition-colors group"
             >
               <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
                 <FileText className="size-3.5 text-muted-foreground" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">
-                  {sec.title}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {sec.hasPlaceholders && (
-                  <Badge variant="amber" className="text-[9px]">
-                    Placeholders
-                  </Badge>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                  onClick={() => generateStreaming(sec.key)}
-                  disabled={!hasSubmission || isStreaming}
-                >
-                  Generate
-                </Button>
-              </div>
+              <p className="text-xs font-medium text-foreground flex-1 truncate">
+                {sec.title}
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                onClick={() => generateStreaming(sec.key)}
+                disabled={!hasSubmission || isStreaming}
+              >
+                Generate
+              </Button>
             </div>
           ))}
         </div>
@@ -404,7 +407,7 @@ export function ReportTab({
     );
   }
 
-  /* ── Streaming progress overlay (no report yet) ──────────────── */
+  // ── Streaming progress ────────────────────────────────────────────────────
   if (isStreaming && !displayReport?.sections) {
     return (
       <div className="max-w-3xl mx-auto space-y-2">
@@ -423,13 +426,7 @@ export function ReportTab({
           return (
             <div
               key={sec.key}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border transition-all ${
-                isDone
-                  ? "border-brand-200 bg-brand-50/30"
-                  : isActive
-                    ? "border-brand-300 bg-brand-50/20 ring-1 ring-brand-200"
-                    : "border-border bg-card opacity-40"
-              }`}
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border transition-all ${isDone ? "border-brand-200 bg-brand-50/30" : isActive ? "border-brand-300 bg-brand-50/20 ring-1 ring-brand-200" : "border-border bg-card opacity-40"}`}
             >
               {isDone ? (
                 <CheckCircle className="size-4 text-brand-600 flex-shrink-0" />
@@ -450,7 +447,7 @@ export function ReportTab({
     );
   }
 
-  /* ── Main split-pane layout ─────────────────────────────────── */
+  // ── Main report editor layout ─────────────────────────────────────────────
   return (
     <>
       {showPaymentGate && (
@@ -465,17 +462,100 @@ export function ReportTab({
         />
       )}
 
+      {showDocxImport && (
+        <DocxImportModal
+          projectId={project.id}
+          onClose={() => setShowDocxImport(false)}
+          onApplied={async () => {
+            setShowDocxImport(false);
+            // Refresh report from DB
+            const pRes = await fetch(`/api/projects/${project.id}`);
+            const updated = await pRes.json();
+            if (updated.reports?.[0]) onUpdateReport(updated.reports[0]);
+            toast.success("Report updated from Word document");
+          }}
+        />
+      )}
+
       <div className="flex gap-5 min-h-[calc(100vh-160px)]">
-        {/* ── LEFT: Section sidebar ─────────────────────────────── */}
+        {/* LEFT: Section sidebar */}
         <div className="w-64 flex-shrink-0 flex flex-col gap-3">
           {/* Publish status bar */}
           <ReportPublishBar
-            report={displayReport}
+            report={displayReport!}
             project={project}
             totalSections={17}
             publishing={saving}
             onPublish={handlePublishClick}
           />
+
+          {/* Word export / import / excerpt actions */}
+          <div className="rounded-xl border border-border bg-card px-3 py-3 space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+              Document actions
+            </p>
+
+            {/* Export Word */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={handleExportWord}
+              loading={exportingDocx}
+              disabled={!displayReport}
+            >
+              <FileDown className="size-3.5" />
+              {exportingDocx ? "Exporting…" : "Export as Word (.doc)"}
+            </Button>
+
+            {/* Import Word */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setShowDocxImport(true)}
+              disabled={!displayReport}
+            >
+              <Upload className="size-3.5" /> Import from Word
+            </Button>
+
+            {/* Excerpt */}
+            <div>
+              <Button
+                size="sm"
+                variant={excerptPublished ? "secondary" : "outline"}
+                className="w-full justify-start"
+                onClick={handlePublishExcerpt}
+                loading={publishingExcerpt}
+                disabled={!displayReport}
+              >
+                <Eye className="size-3.5" />
+                {excerptPublished ? "Republish excerpt" : "Publish excerpt"}
+              </Button>
+              {excerptPublished && (
+                <a
+                  href={`/project/${project.id}/excerpt`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-[10px] text-brand-700 hover:underline mt-1 px-1"
+                >
+                  View excerpt →
+                </a>
+              )}
+            </div>
+
+            {/* Download PDF */}
+            {isPublished && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full justify-start text-muted-foreground"
+                onClick={downloadPdf}
+              >
+                <Download className="size-3.5" /> Download PDF
+              </Button>
+            )}
+          </div>
 
           {/* Section list */}
           <div className="rounded-xl border border-border bg-card overflow-hidden flex-1">
@@ -494,19 +574,19 @@ export function ReportTab({
                     section={displayReport?.sections[key]}
                     isActive={activeSection === key}
                     isStreaming={streamingSection === key}
-                    hasInstruction={!!(sectionInstructions?.[key])}
+                    hasInstruction={!!sectionInstructions?.[key]}
                     onClick={() => setActiveSection(key as ReportSectionKey)}
                   />
                 ))}
 
-                {/* Appendices divider */}
                 <div className="px-3 pt-3 pb-1">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                     <PaperclipIcon className="size-3" /> Appendices
                   </p>
                 </div>
                 {REPORT_APPENDICES.map((appendix) => {
-                  const section = displayReport?.sections[appendix.key];
+                  const section =
+                    displayReport?.sections[appendix.key as ReportSectionKey];
                   const hasContent =
                     !!section?.content && !(section as any).is_placeholder;
                   return (
@@ -522,13 +602,7 @@ export function ReportTab({
                       }`}
                     >
                       <div
-                        className={`size-2 rounded-full flex-shrink-0 ${
-                          hasContent
-                            ? "bg-brand-500"
-                            : appendix.autoPopulated
-                              ? "bg-blue-400"
-                              : "bg-amber-400"
-                        }`}
+                        className={`size-2 rounded-full flex-shrink-0 ${hasContent ? "bg-brand-500" : appendix.autoPopulated ? "bg-blue-400" : "bg-amber-400"}`}
                       />
                       <span className="text-[10px] truncate leading-snug">
                         {appendix.title}
@@ -541,7 +615,7 @@ export function ReportTab({
           </div>
         </div>
 
-        {/* ── RIGHT: Section content ───────────────────────────── */}
+        {/* RIGHT: Section editor */}
         <div className="flex-1 min-w-0">
           {activeSection && displayReport ? (
             <ReportEditor

@@ -395,6 +395,16 @@ export interface Report {
   status: "draft" | "review" | "published";
   branding: ReportBranding;
   pdf_url?: string;
+  report_format_id?: string;
+  format_snapshot?: any;
+  excerpt_status?: "none" | "published";
+  excerpt_published_at?: string;
+  excerpt_sections?: Array<{
+    key: string;
+    title: string;
+    word_limit: number;
+  }>;
+  last_docx_exported_at?: string;
   created_at: string;
   updated_at: string;
 }
