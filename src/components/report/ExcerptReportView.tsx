@@ -1,10 +1,16 @@
 "use client";
 
 // ── src/components/report/ExcerptReportView.tsx ───────────────────────────────
-import { useState } from "react";
-import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+// Renders the public excerpt page.
+//
+// SECURITY NOTE: This component no longer receives the full report.sections map.
+// Instead it receives:
+//   - excerptContent: Record<sectionKey, truncatedText> — pre-truncated on the
+//     server via the public_report_excerpts view. No full report content leaks.
+//   - financialHighlights: safe scalar summary values only.
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { formatCurrency } from "@/lib/utils";
 import {
   Lock,
@@ -14,7 +20,6 @@ import {
   CheckCircle,
   Eye,
 } from "lucide-react";
-import type { Report, ReportSectionKey } from "@/types";
 
 interface ExcerptSection {
   key: string;
@@ -22,36 +27,42 @@ interface ExcerptSection {
   word_limit: number;
 }
 
+interface FinancialHighlights {
+  capex_total?: number | null;
+  total_annual_revenue?: number | null;
+  payback_years?: number | null;
+}
+
+interface Branding {
+  primary_color?: string;
+  secondary_color?: string;
+  consultant_name?: string;
+  company_name?: string;
+  footer_text?: string;
+}
+
 interface Props {
-  report: Report;
   projectId: string;
   projectTitle: string;
   excerptSections: ExcerptSection[];
+  /** Pre-truncated content keyed by section key — never the full report text. */
+  excerptContent: Record<string, string | null>;
+  financialHighlights?: FinancialHighlights | null;
+  branding?: Branding | null;
   fullReportPublished: boolean;
 }
 
-function truncateToWords(
-  text: string,
-  wordLimit: number,
-): { truncated: string; wasCut: boolean } {
-  const words = text.split(/\s+/);
-  if (words.length <= wordLimit) return { truncated: text, wasCut: false };
-  return {
-    truncated: words.slice(0, wordLimit).join(" ") + "…",
-    wasCut: true,
-  };
-}
-
 export function ExcerptReportView({
-  report,
   projectId,
   projectTitle,
   excerptSections,
+  excerptContent,
+  financialHighlights,
+  branding,
   fullReportPublished,
 }: Props) {
-  const branding = report.branding;
-  const fm = report.financial_model;
   const primary = branding?.primary_color || "#1A5C38";
+  const fm = financialHighlights;
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 space-y-10">
@@ -82,55 +93,60 @@ export function ExcerptReportView({
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl" />
       </div>
 
-      {/* Financial highlights (always shown if model exists) */}
-      {fm && (
+      {/* Financial highlights — safe scalar summary only */}
+      {fm && (fm.capex_total || fm.total_annual_revenue || fm.payback_years) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             {
               label: "Total CAPEX",
-              value: formatCurrency(fm.capex_total),
+              value: formatCurrency(fm.capex_total ?? 0),
               icon: BarChart3,
+              show: fm.capex_total != null,
             },
             {
               label: "Annual Revenue",
-              value: formatCurrency(fm.total_annual_revenue),
+              value: formatCurrency(fm.total_annual_revenue ?? 0),
               icon: TrendingUp,
+              show: fm.total_annual_revenue != null,
             },
             {
               label: "Payback Period",
-              value: `${fm.payback_years} years`,
+              value: `${fm.payback_years ?? 0} years`,
               icon: CheckCircle,
+              show: fm.payback_years != null,
             },
-          ].map(({ label, value, icon: Icon }) => (
-            <div
-              key={label}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4"
-            >
-              <div className="p-2.5 rounded-xl bg-brand-50">
-                <Icon className="size-5 text-brand-700" />
+          ]
+            .filter((item) => item.show)
+            .map(({ label, value, icon: Icon }) => (
+              <div
+                key={label}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4"
+              >
+                <div className="p-2.5 rounded-xl bg-brand-50">
+                  <Icon className="size-5 text-brand-700" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="text-xl font-bold text-foreground mt-0.5">
+                    {value}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {label}
-                </p>
-                <p className="text-xl font-bold text-foreground mt-0.5">
-                  {value}
-                </p>
-              </div>
-            </div>
-          ))}
+            ))}
         </div>
       )}
 
-      {/* Excerpt sections */}
+      {/* Excerpt sections — content is already truncated server-side */}
       {excerptSections.map((es) => {
-        const section = report.sections[es.key as ReportSectionKey];
-        if (!section?.content) return null;
+        const content = excerptContent[es.key];
+        if (!content) return null;
 
-        const { truncated, wasCut } = truncateToWords(
-          section.content,
-          es.word_limit,
-        );
+        // The view already truncated to word_limit words; we detect whether
+        // the original was cut by checking if the word count equals the limit.
+        const wordCount = content.trim().split(/\s+/).length;
+        const wasCut = wordCount >= es.word_limit;
 
         return (
           <section
@@ -144,7 +160,7 @@ export function ExcerptReportView({
               <h2 className="text-xl font-bold text-foreground">{es.title}</h2>
             </div>
             <div className="relative">
-              <MarkdownRenderer content={truncated} />
+              <MarkdownRenderer content={content} />
               {wasCut && (
                 <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white to-transparent pointer-events-none" />
               )}

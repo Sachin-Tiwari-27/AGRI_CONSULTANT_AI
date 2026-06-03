@@ -58,32 +58,55 @@ export async function POST(req: NextRequest) {
     if (fmt?.sections?.length) formatSections = fmt.sections;
   }
 
-  // Parse the docx server-side
-  let mammoth: any;
-  try {
-    mammoth = require("mammoth");
-  } catch {
-    return NextResponse.json(
-      { error: "mammoth package not installed. Run: npm install mammoth" },
-      { status: 500 },
-    );
-  }
-
-  const buffer = await file.arrayBuffer();
+  // Detect whether this is a real OOXML .docx or our HTML-wrapped .doc export.
+  // Our exporter produces a UTF-8 HTML document saved with a .doc extension and
+  // MIME type application/msword. Mammoth only understands OOXML, so we read
+  // HTML exports directly without calling mammoth.
+  const isHtmlDoc =
+    file.name.toLowerCase().endsWith(".doc") ||
+    file.type === "text/html" ||
+    (file.type === "application/msword" &&
+      !file.name.toLowerCase().endsWith(".docx"));
 
   let html: string;
-  try {
-    const result = await mammoth.convertToHtml({ buffer: Buffer.from(buffer) });
-    html = result.value;
-  } catch (err) {
-    console.error("[DocxImport] mammoth parse failed:", err);
-    return NextResponse.json(
-      {
-        error:
-          "Failed to parse Word document. Ensure the file is a valid .docx.",
-      },
-      { status: 422 },
-    );
+
+  if (isHtmlDoc) {
+    // Our own HTML export — read as plain text, already valid HTML
+    try {
+      html = await file.text();
+    } catch (err) {
+      console.error("[DocxImport] Failed to read HTML doc:", err);
+      return NextResponse.json(
+        { error: "Failed to read the document. Ensure the file is not corrupted." },
+        { status: 422 },
+      );
+    }
+  } else {
+    // Real .docx — use mammoth to convert OOXML → HTML
+    let mammoth: any;
+    try {
+      mammoth = require("mammoth");
+    } catch {
+      return NextResponse.json(
+        { error: "mammoth package not installed. Run: npm install mammoth" },
+        { status: 500 },
+      );
+    }
+
+    const buffer = await file.arrayBuffer();
+    try {
+      const result = await mammoth.convertToHtml({ buffer: Buffer.from(buffer) });
+      html = result.value;
+    } catch (err) {
+      console.error("[DocxImport] mammoth parse failed:", err);
+      return NextResponse.json(
+        {
+          error:
+            "Failed to parse Word document. Ensure the file is a valid .docx.",
+        },
+        { status: 422 },
+      );
+    }
   }
 
   // Split by headings and match

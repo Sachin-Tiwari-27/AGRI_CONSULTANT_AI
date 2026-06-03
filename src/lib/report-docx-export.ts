@@ -356,7 +356,7 @@ function mdToWordHtml(md: string): string {
         return `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
       })
       .join("");
-    return `<table><${thead}<tbody>${tbody}</tbody></table>`;
+    return `<table>${thead}<tbody>${tbody}</tbody></table>`;
   });
 
   // Bullet lists (simple — group consecutive bullet lines)

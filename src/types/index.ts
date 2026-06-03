@@ -260,13 +260,14 @@ export type AITask =
   | "report_benefits_impact"
   | "report_csr";
 
-export type AIProvider = "openrouter" | "anthropic" | "openai" | "google";
+export type AIProvider = "openrouter" | "anthropic" | "openai" | "google" | "nvidia";
 
 export interface AIRequest {
   task: AITask;
   variables: Record<string, string>;
   maxTokens?: number;
   stream?: boolean;
+  meta?: Record<string, string>;
 }
 
 export interface AIResponse {
