@@ -106,6 +106,11 @@ Always tailor your response to ${project.country}'s agricultural context, local 
       apiKeyEnv: "GOOGLE_AI_API_KEY",
       defaultModel: "gemini-2.0-flash",
     },
+    nvidia: {
+      baseURL: "https://integrate.api.nvidia.com/v1",
+      apiKeyEnv: "NVIDIA_API_KEY",
+      defaultModel: "nvidia/llama-3.1-nemotron-70b-instruct",
+    },
   };
   // Load provider config
   const providerName =

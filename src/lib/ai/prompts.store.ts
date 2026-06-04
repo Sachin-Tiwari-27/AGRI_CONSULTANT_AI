@@ -1594,12 +1594,6 @@ Write 3-4 sentences:
 {{consultant_instructions}}
 `,
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // AUTO-POPULATED / CONTEXT SECTIONS (no consultant_instructions needed)
-  // ════════════════════════════════════════════════════════════════════════════
-
-  report_introduction_stub: ``,  // reserved
-
 };
 
 // ── buildPrompt ─────────────────────────────────────────────────────────────

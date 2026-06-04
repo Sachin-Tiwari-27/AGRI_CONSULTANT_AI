@@ -260,13 +260,14 @@ export type AITask =
   | "report_benefits_impact"
   | "report_csr";
 
-export type AIProvider = "openrouter" | "anthropic" | "openai" | "google";
+export type AIProvider = "openrouter" | "anthropic" | "openai" | "google" | "nvidia";
 
 export interface AIRequest {
   task: AITask;
   variables: Record<string, string>;
   maxTokens?: number;
   stream?: boolean;
+  meta?: Record<string, string>;
 }
 
 export interface AIResponse {
@@ -395,6 +396,16 @@ export interface Report {
   status: "draft" | "review" | "published";
   branding: ReportBranding;
   pdf_url?: string;
+  report_format_id?: string;
+  format_snapshot?: any;
+  excerpt_status?: "none" | "published";
+  excerpt_published_at?: string;
+  excerpt_sections?: Array<{
+    key: string;
+    title: string;
+    word_limit: number;
+  }>;
+  last_docx_exported_at?: string;
   created_at: string;
   updated_at: string;
 }
