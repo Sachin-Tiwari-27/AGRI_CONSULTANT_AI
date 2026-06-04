@@ -115,7 +115,7 @@ export function ReportPublishBar({
     pct === 100 ? "bg-brand-600" : pct >= 66 ? "bg-amber-500" : "bg-red-400";
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="rounded-xl border border-border bg-card relative">
       {/* Main row */}
       <div className="px-3 py-3 space-y-2.5">
         {/* Progress bar */}
@@ -239,7 +239,7 @@ export function ReportPublishBar({
 
       {/* Manual model notice — compact */}
       {hasOverride && (
-        <div className="px-3 py-2 border-t border-border bg-blue-50/40 flex items-start gap-1.5">
+        <div className="px-3 py-2 border-t border-border bg-blue-50/40 flex items-start gap-1.5 rounded-b-xl">
           <Edit3 className="size-3 text-blue-500 flex-shrink-0 mt-0.5" />
           <p className="text-[10px] text-blue-600 leading-snug">
             Consultant financial model active — AI figures replaced.

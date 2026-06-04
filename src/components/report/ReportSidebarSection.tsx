@@ -65,12 +65,6 @@ function countPlaceholders(text: string): number {
   return (text.match(/⬡ PLACEHOLDER/g) || []).length;
 }
 
-// First sentence only for preview
-function firstSentence(text: string): string {
-  const stripped = stripMarkdown(text);
-  const match = stripped.match(/^[^.!?]+[.!?]/);
-  return match ? match[0].trim() : stripped.slice(0, 80);
-}
 
 export function ReportSidebarSection({
   sectionKey,
@@ -83,10 +77,6 @@ export function ReportSidebarSection({
 }: Props) {
   const content = section?.content || "";
 
-  const preview = useMemo(
-    () => (content ? firstSentence(content) : ""),
-    [content],
-  );
   const wordCount = useMemo(
     () => (content ? countWords(content) : 0),
     [content],
@@ -165,13 +155,6 @@ export function ReportSidebarSection({
           )}
         </div>
       </div>
-
-      {/* Preview — only when active or has content */}
-      {hasContent && preview && (
-        <p className="text-[10px] text-muted-foreground/70 leading-snug mt-0.5 truncate pl-5">
-          {preview}
-        </p>
-      )}
 
       {/* Word count — only show when content exists */}
       {hasContent && wordCount > 0 && (
