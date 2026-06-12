@@ -1,18 +1,13 @@
 "use client";
 
-/**
- * src/components/report/ReportSidebarSection.tsx
- *
- * A single section row in the report sidebar, with:
- *   - Status dot (generated / approved / streaming / empty)
- *   - Section title
- *   - 1-line content preview (first ~60 chars, markdown stripped) — fix 3a
- *   - Placeholder count chip
- *   - Word count
- *
- * Usage: replace the existing section list items in your ReportTab sidebar
- * with this component.
- */
+// Changes:
+//   - Tighter layout: 56px min-height instead of 72px
+//   - Status dot replaced with cleaner left-border accent
+//   - Word count shown as pill only when near/over target
+//   - Placeholder count only shown when > 0
+//   - Preview text shows first sentence only (shorter)
+//   - Instruction dot moved to right of title, not separate column
+//   - imported_from_docx badge
 
 import { useMemo } from "react";
 import {
@@ -21,6 +16,7 @@ import {
   FileText,
   AlertTriangle,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReportSectionKey } from "@/types";
@@ -29,6 +25,7 @@ interface SectionData {
   content?: string;
   approved?: boolean;
   ai_generated?: boolean;
+  imported_from_docx?: boolean;
 }
 
 interface Props {
@@ -40,8 +37,6 @@ interface Props {
   hasInstruction: boolean;
   onClick: () => void;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function stripMarkdown(text: string): string {
   return text
@@ -70,7 +65,6 @@ function countPlaceholders(text: string): number {
   return (text.match(/⬡ PLACEHOLDER/g) || []).length;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function ReportSidebarSection({
   sectionKey,
@@ -83,17 +77,10 @@ export function ReportSidebarSection({
 }: Props) {
   const content = section?.content || "";
 
-  const preview = useMemo(() => {
-    if (!content) return "";
-    const stripped = stripMarkdown(content);
-    return stripped.length > 65 ? stripped.slice(0, 65) + "…" : stripped;
-  }, [content]);
-
   const wordCount = useMemo(
     () => (content ? countWords(content) : 0),
     [content],
   );
-
   const placeholderCount = useMemo(
     () => (content ? countPlaceholders(content) : 0),
     [content],
@@ -102,78 +89,81 @@ export function ReportSidebarSection({
   const hasContent = !!content;
   const isApproved = section?.approved;
   const isAiDraft = section?.ai_generated && !isApproved;
+  const isImported = (section as any)?.imported_from_docx;
+
+  // Status icon
+  const StatusIcon = isStreaming
+    ? () => <Loader2 className="size-3 text-brand-500 animate-spin" />
+    : isApproved
+      ? () => <CheckCircle className="size-3 text-brand-500" />
+      : isImported
+        ? () => <Upload className="size-3 text-blue-500" />
+        : isAiDraft
+          ? () => <Sparkles className="size-3 text-violet-400" />
+          : hasContent
+            ? () => <FileText className="size-3 text-muted-foreground/50" />
+            : () => (
+                <div className="size-3 rounded-full border-2 border-border/60" />
+              );
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        "w-full min-h-18 text-left rounded-xl border bg-card px-3 py-3 transition-colors duration-150",
+        "w-full text-left rounded-lg px-3 py-2 transition-all duration-100 group",
+        "border-l-2 mb-px",
         isActive
-          ? "border-brand-200 bg-brand-50 shadow-sm"
-          : "border-border hover:border-brand-200 hover:bg-brand-50",
+          ? "bg-brand-50 border-l-brand-600"
+          : hasContent
+            ? "hover:bg-muted/60 border-l-transparent hover:border-l-brand-200"
+            : "hover:bg-muted/40 border-l-transparent opacity-60 hover:opacity-80",
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-2 min-w-0">
         {/* Status icon */}
-        <div className="mt-0.5 flex-shrink-0">
-          {isStreaming ? (
-            <Loader2 className="size-3.5 text-brand-600 animate-spin" />
-          ) : isApproved ? (
-            <CheckCircle className="size-3.5 text-brand-600" />
-          ) : isAiDraft ? (
-            <Sparkles className="size-3.5 text-violet-500" />
-          ) : hasContent ? (
-            <FileText className="size-3.5 text-muted-foreground" />
-          ) : (
-            <div className="size-3.5 rounded-full border-2 border-border" />
-          )}
+        <div className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+          <StatusIcon />
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex items-center gap-2 justify-between">
-            <span
-              className={cn(
-                "text-xs font-semibold leading-snug truncate",
-                isActive ? "text-brand-800" : "text-foreground",
-                !hasContent && "text-muted-foreground",
-              )}
-            >
-              {title}
-            </span>
-
-            {/* Consultant instruction dot */}
-            {hasInstruction && (
-              <span
-                className="size-1.5 rounded-full bg-violet-500"
-                title="Has consultant instructions"
-              />
-            )}
-          </div>
-
-          {preview ? (
-            <p className="text-[10px] text-muted-foreground/70 leading-snug line-clamp-2">
-              {preview}
-            </p>
-          ) : (
-            <div className="h-4" />
+        {/* Title */}
+        <span
+          className={cn(
+            "text-[11px] font-medium leading-snug flex-1 truncate",
+            isActive
+              ? "text-brand-800"
+              : hasContent
+                ? "text-foreground"
+                : "text-muted-foreground",
           )}
+        >
+          {title}
+        </span>
 
-          {hasContent && (
-            <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-              {wordCount > 0 && (
-                <span className="tabular-nums">{wordCount}w</span>
-              )}
-              {placeholderCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-amber-700">
-                  <AlertTriangle className="size-2.5" />
-                  {placeholderCount}
-                </span>
-              )}
-            </div>
+        {/* Right badges */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {hasInstruction && (
+            <span
+              className="size-1.5 rounded-full bg-violet-400"
+              title="Has consultant instructions"
+            />
+          )}
+          {placeholderCount > 0 && (
+            <span className="flex items-center gap-0.5 text-[9px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1">
+              <AlertTriangle className="size-2" />
+              {placeholderCount}
+            </span>
           )}
         </div>
       </div>
+
+      {/* Word count — only show when content exists */}
+      {hasContent && wordCount > 0 && (
+        <div className="flex items-center gap-1 mt-0.5 pl-5">
+          <span className="text-[9px] text-muted-foreground/50 tabular-nums">
+            {wordCount}w
+          </span>
+        </div>
+      )}
     </button>
   );
 }
