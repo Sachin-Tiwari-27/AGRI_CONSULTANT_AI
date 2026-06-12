@@ -484,13 +484,15 @@ export function ReportTab({
           style={{ width: 280 }}
         >
           {/* Publish bar */}
-          <ReportPublishBar
-            report={displayReport!}
-            project={project}
-            totalSections={totalSections}
-            publishing={saving}
-            onPublish={handlePublishClick}
-          />
+          {displayReport && (
+            <ReportPublishBar
+              report={displayReport}
+              project={project}
+              totalSections={totalSections}
+              publishing={saving}
+              onPublish={handlePublishClick}
+            />
+          )}
 
           {/* Document actions */}
           <div className="rounded-xl border border-border bg-card px-4 py-3.5 space-y-2">
