@@ -37,6 +37,33 @@ export function LoginForm() {
     }
   }
 
+  async function handleDemoLogin(role: "consultant" | "client") {
+    setLoading(true);
+    setError("");
+    const demoEmail =
+      role === "consultant" ? "consultant@agriai.com" : "client@agriai.com";
+    const demoPassword = "password123";
+
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: demoEmail,
+      password: demoPassword,
+    });
+    if (error) {
+      setError(
+        error.message +
+          " (Make sure demo accounts are created in your Supabase database)",
+      );
+      setLoading(false);
+    } else {
+      router.push(redirect);
+      router.refresh();
+    }
+  }
+
   async function loginWithGoogle() {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -55,23 +82,8 @@ export function LoginForm() {
         Welcome back
       </h2>
       <p className="text-xs text-muted-foreground mb-6">
-        Sign in to your consultant account
+        Sign in to your account
       </p>
-
-      {/* Google OAuth */}
-      <button
-        onClick={loginWithGoogle}
-        className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-lg border border-border bg-card hover:bg-muted text-sm font-medium text-foreground transition-colors mb-4"
-      >
-        <GoogleIcon />
-        Continue with Google
-      </button>
-
-      <div className="relative mb-4 flex items-center gap-3">
-        <Separator className="flex-1" />
-        <span className="text-[11px] text-muted-foreground">or</span>
-        <Separator className="flex-1" />
-      </div>
 
       <form onSubmit={handleLogin} className="space-y-4">
         <Field label="Email" htmlFor="email">
@@ -108,6 +120,48 @@ export function LoginForm() {
           Sign in
         </Button>
       </form>
+
+      {/* Quick Demo Sign-in */}
+      <div className="mt-6 pt-6 border-t border-border">
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 text-center">
+          Quick Demo Sign-In (Staging / Testing)
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleDemoLogin("consultant")}
+            className="flex items-center justify-center px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-colors disabled:opacity-50"
+          >
+            Demo Consultant
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleDemoLogin("client")}
+            className="flex items-center justify-center px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-colors disabled:opacity-50"
+          >
+            Demo Farmer/Client
+          </button>
+        </div>
+      </div>
+
+      <div className="relative my-6 flex items-center gap-3">
+        <Separator className="flex-1" />
+        <span className="text-[11px] text-muted-foreground">
+          or authentication options
+        </span>
+        <Separator className="flex-1" />
+      </div>
+
+      {/* Google OAuth */}
+      <button
+        onClick={loginWithGoogle}
+        className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-medium text-foreground transition-colors"
+      >
+        <GoogleIcon />
+        Continue with Google SSO
+      </button>
 
       <p className="text-xs text-muted-foreground text-center mt-5">
         No account?{" "}
